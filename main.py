@@ -11,8 +11,11 @@ for i in range(env.rows):
     if i != 0:
         env.turn()
     for t in range(env.columns):
-        action = np.random.uniform(env.action_space[0], env.action_space[1], 1)[0]
-        observation, reward, done, info, _ = env.step(action)
+        action = []
+        for j in range(3):
+            action.append(np.random.uniform(env.action_space[j][0], env.action_space[j][1], 1)[0])
+        action = tuple(action)
+        observation, reward, done, info = env.step(action)
         pprint(observation)
         pprint(reward)
         print('\n')

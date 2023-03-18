@@ -7,7 +7,7 @@ class MicroGrid:
     def __init__(self):
         # action space
         # generate or buy or use battery
-        self.action_space = (-5, 5)
+        self.action_space = np.array([(-5, 5), (-5, 5), (-5, 5)], dtype=np.float16)
 
         # state
         self.state = None
@@ -20,6 +20,10 @@ class MicroGrid:
         self.columns = 0
         self.rows = 0
 
+        # voltage
+        self.__voltage_para = 1
+        self.slack = 1
+
         # limitations
         # balance between supply and demand
         self.__more_balance_para = 3
@@ -30,6 +34,11 @@ class MicroGrid:
         self.battery = 0
         self.__battery_para = 5
 
+        # voltage limit
+        self.__low_voltage = 200
+        self.__high_voltage = 240
+        self.__voltage_limit = 5
+
         # target
         # Economic consumption function
         self.__generate_cost = 1
@@ -38,8 +47,7 @@ class MicroGrid:
         self.__costc = 4
 
         # security
-        self.__security_para = 1
-        self.slack = 1
+        self.__ref_voltage = 220
 
         # environmental objective
         self.__generate_env_param = 0.5
@@ -47,6 +55,10 @@ class MicroGrid:
 
     def step(self, action):
         # action: generate buy battery
+
+        # voltage value
+
+        v = action[0] * self.__voltage_para + self.slack
 
         # limitations
 
@@ -68,7 +80,15 @@ class MicroGrid:
         else:
             battery_punishment = 0
 
-        limitations = sup_demand_punishment + battery_punishment
+        # voltage
+        if v < self.__low_voltage:
+            voltage_punishment = self.__voltage_limit * (self.__low_voltage - v)
+        elif v > self.__high_voltage:
+            voltage_punishment = self.__voltage_limit * (v - self.__high_voltage)
+        else:
+            voltage_punishment = 0
+
+        limitations = sup_demand_punishment + battery_punishment + voltage_punishment
 
         # target
 
@@ -83,7 +103,7 @@ class MicroGrid:
         eco_reward = maintenance + generate_costs + buy
 
         # security objective
-        sec_reward = action[0] * self.__security_para + self.slack
+        sec_reward = (v - self.__ref_voltage) ** 2
 
         # environmental objective
         env_reward = action[0] * self.__generate_env_param + action[1] * self.__buy_env_param
@@ -100,7 +120,7 @@ class MicroGrid:
         # point to the next column or step or data
         self.__node[1] += 1
 
-        return self.state, reward, False, False, {}
+        return self.state, reward, False, False
 
     def turn(self):
         # next turn is beginning and the step reset to 0

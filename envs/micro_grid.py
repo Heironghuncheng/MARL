@@ -7,7 +7,12 @@ class MicroGrid:
     def __init__(self):
         # action space
         # generate or buy or use battery
-        self.action_space = np.array([(-5, 5), (-5, 5), (-5, 5)], dtype=np.float16)
+        self.__action_space_dict = {"P_DG_max": (-5,), "P_DG_min": (5,), "P_BT_max": (5,), "P_BT_min": (-5,),
+                                    "P_PV_max": (-5,), "P_PV_min": (5,)}
+        e = self.__action_space_dict
+        self.action_space = np.array(
+            [(e["P_DG_min"], e["P_DG_max"]), (e["P_PV_min"], e["P_PV_max"]), (e["P_BT_min"], e["P_BT_max"])],
+            dtype=np.float16)
 
         # state
         self.state = None
@@ -33,6 +38,13 @@ class MicroGrid:
         self.__battery_cap = 100
         self.battery = 0
         self.__battery_para = 5
+        self.__battery_dis = 10
+        self.__battery_ch = 90
+        # soc means last state of battery not now
+        self.__soc = 0
+        self.__raw_ch = 0
+        self.__raw_dis = 0
+        self.__last_battery_used = 0
 
         # voltage limit
         self.__low_voltage = 200
@@ -53,40 +65,41 @@ class MicroGrid:
         self.__generate_env_param = 0.5
         self.__buy_env_param = 0.3
 
+    @staticmethod
+    def indicator(num):
+        if num > 0:
+            return 1
+        else:
+            return 0
+
     def step(self, action):
         # action: generate buy battery
 
         # voltage value
-
-        v = action[0] * self.__voltage_para + self.slack
+        p_dg, p_pv, p_bt = action
+        v = p_dg * self.__voltage_para + self.slack
 
         # limitations
 
         # balance between supply and demand
         sup_demand_function = -(self.observation_space[1, self.__node[0], self.__node[1]] - self.observation_space[
-            2, self.__node[0], self.__node[1]] - action[0] - action[1] + action[2])
+            2, self.__node[0], self.__node[1]] - p_dg - p_pv + p_bt)
         if sup_demand_function > 0:
             sup_demand_punishment = self.__more_balance_para * sup_demand_function
         else:
             sup_demand_punishment = self.__less_balance_para * (- sup_demand_function)
 
         # battery
-        self.battery -= action[2]
-
-        if self.battery > self.__battery_cap:
-            battery_punishment = self.__battery_para * (self.battery - self.__battery_cap)
-        elif self.battery < 0:
-            battery_punishment = self.__battery_para * (- self.battery)
-        else:
-            battery_punishment = 0
+        self.battery -= p_bt
+        self.__battery_dis = self.__soc * self.__battery_cap
+        self.__battery_ch = (1 - self.__soc) * self.__battery_cap
+        battery_punishment = max(self.__battery_dis - p_bt, 0) + max(self.__battery_ch - p_bt, 0)
+        self.__soc += (self.indicator(self.__last_battery_used) * self.__raw_ch + (
+                    1 - self.indicator(self.__last_battery_used)) / self.__raw_dis) * p_bt
+        self.__last_battery_used = p_bt
 
         # voltage
-        if v < self.__low_voltage:
-            voltage_punishment = self.__voltage_limit * (self.__low_voltage - v)
-        elif v > self.__high_voltage:
-            voltage_punishment = self.__voltage_limit * (v - self.__high_voltage)
-        else:
-            voltage_punishment = 0
+        voltage_punishment = self.__voltage_limit * (max(v - self.__high_voltage, 0) + max(self.__low_voltage - v, 0))
 
         limitations = sup_demand_punishment + battery_punishment + voltage_punishment
 
@@ -94,11 +107,11 @@ class MicroGrid:
 
         # Economic Object
         # maintenance of battery
-        maintenance = self.__generate_cost * action[2] ** 2
+        maintenance = self.__generate_cost * p_bt ** 2
         # generate costs
-        generate_costs = self.__costa * action[0] ** 2 + self.__costb * action[0] + self.__costc
+        generate_costs = self.__costa * p_dg ** 2 + self.__costb * p_dg + self.__costc
         # buy
-        buy = action[1] * self.observation_space[0, self.__node[0], self.__node[1]]
+        buy = p_pv * self.observation_space[0, self.__node[0], self.__node[1]]
 
         eco_reward = maintenance + generate_costs + buy
 
@@ -106,7 +119,7 @@ class MicroGrid:
         sec_reward = (v - self.__ref_voltage) ** 2
 
         # environmental objective
-        env_reward = action[0] * self.__generate_env_param + action[1] * self.__buy_env_param
+        env_reward = p_dg * self.__generate_env_param + p_pv * self.__buy_env_param
 
         # reward
         reward = - eco_reward - sec_reward - env_reward - limitations
@@ -135,7 +148,8 @@ class MicroGrid:
         self.battery = 0
         # refresh state
         self.state = (
-        self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0], self.battery)
+            self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0],
+            self.battery)
 
         return self.state
 

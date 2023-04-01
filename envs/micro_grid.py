@@ -1,21 +1,24 @@
+# coding=utf-8
+
 import numpy as np
 from pandas import read_csv
+import tensorflow as tf
 
 
 class MicroGrid:
 
-    def __init__(self):
+    def __init__(self, **config):
         # action space
         # generate or buy or use battery
-        self.__action_space_dict = {"P_DG_max": (-5,), "P_DG_min": (5,), "P_BT_max": (5,), "P_BT_min": (-5,),
-                                    "P_PV_max": (-5,), "P_PV_min": (5,)}
-        e = self.__action_space_dict
-        self.action_space = np.array(
-            [(e["P_DG_min"], e["P_DG_max"]), (e["P_PV_min"], e["P_PV_max"]), (e["P_BT_min"], e["P_BT_max"])],
-            dtype=np.float16)
+        # self.__action_space_dict = {"PD_min": 100, "PD_max": 400, "PG_max": 500, "PG_min": 500,
+        #                             "PB_min": -200, "PB_max": 200}
+        # e = self.__action_space_dict
+        # self.action_space = np.array(
+        #     [(e["PD_min"], e["PD_max"]), (e["PG_min"], e["PG_max"]), (e["PB_min"], e["PB_max"])],
+        #     dtype=np.float16)
 
         # state
-        self.state = None
+        # self.state = None
 
         # observation space
         self.observation_space = None
@@ -26,8 +29,8 @@ class MicroGrid:
         self.rows = 0
 
         # voltage
-        self.__voltage_para = 1
-        self.slack = 1
+        self.__voltage_para = 30
+        self.slack = 30
 
         # limitations
         # balance between supply and demand
@@ -35,16 +38,14 @@ class MicroGrid:
         self.__less_balance_para = 5
 
         # battery capacity and battery
-        self.__battery_cap = 100
-        self.battery = 0
-        self.__battery_para = 5
-        self.__battery_dis = 10
-        self.__battery_ch = 90
+        # self.__battery_cap = 100
+        # self.__battery_para = 5
+        # self.__battery_dis = 10
+        # self.__battery_ch = 90
         # soc means last state of battery not now
-        self.__soc = 0
-        self.__raw_ch = 0
-        self.__raw_dis = 0
-        self.__last_battery_used = 0
+        # self.__soc = 0
+        self.__raw_ch = 0.98
+        self.__raw_dis = 0.98
 
         # voltage limit
         self.__low_voltage = 200
@@ -53,17 +54,16 @@ class MicroGrid:
 
         # target
         # Economic consumption function
-        self.__generate_cost = 1
-        self.__costa = 1
-        self.__costb = 4
-        self.__costc = 4
+        # self.__battery_cost = 0.0035
+        # self.__costa = 0.0025
+        # self.__costb = 8
+        # self.__costc = 300
 
         # security
         self.__ref_voltage = 220
 
         # environmental objective
-        self.__generate_env_param = 0.5
-        self.__buy_env_param = 0.3
+        self.__env_param = 1.65
 
     @staticmethod
     def indicator(num):
@@ -72,31 +72,32 @@ class MicroGrid:
         else:
             return 0
 
-    def step(self, action):
+    def step(self, action, soc, battery_cap, battery_cost, costa, costb, costc):
+        print("****ENV****")
+
         # action: generate buy battery
 
         # voltage value
-        p_dg, p_pv, p_bt = action
-        v = p_dg * self.__voltage_para + self.slack
+        pd, pg, pb = action
+        v = pd * self.__voltage_para + self.slack
+        print(action)
 
         # limitations
 
         # balance between supply and demand
         sup_demand_function = -(self.observation_space[1, self.__node[0], self.__node[1]] - self.observation_space[
-            2, self.__node[0], self.__node[1]] - p_dg - p_pv + p_bt)
+            2, self.__node[0], self.__node[1]] - pd - pg + pb)
         if sup_demand_function > 0:
             sup_demand_punishment = self.__more_balance_para * sup_demand_function
         else:
-            sup_demand_punishment = self.__less_balance_para * (- sup_demand_function)
+            sup_demand_punishment = self.__less_balance_para * - sup_demand_function
 
         # battery
-        self.battery -= p_bt
-        self.__battery_dis = self.__soc * self.__battery_cap
-        self.__battery_ch = (1 - self.__soc) * self.__battery_cap
-        battery_punishment = max(self.__battery_dis - p_bt, 0) + max(self.__battery_ch - p_bt, 0)
-        self.__soc += (self.indicator(self.__last_battery_used) * self.__raw_ch + (
-                    1 - self.indicator(self.__last_battery_used)) / self.__raw_dis) * p_bt
-        self.__last_battery_used = p_bt
+        battery_dis = soc * battery_cap
+        battery_ch = (1 - soc) * battery_cap
+        battery_punishment = max(battery_dis - pb, 0) + max(battery_ch - pb, 0)
+        soc += (self.indicator(pb) * self.__raw_ch + (
+                1 - self.indicator(pb)) / self.__raw_dis) * pb
 
         # voltage
         voltage_punishment = self.__voltage_limit * (max(v - self.__high_voltage, 0) + max(self.__low_voltage - v, 0))
@@ -107,11 +108,11 @@ class MicroGrid:
 
         # Economic Object
         # maintenance of battery
-        maintenance = self.__generate_cost * p_bt ** 2
+        maintenance = battery_cost * pb ** 2
         # generate costs
-        generate_costs = self.__costa * p_dg ** 2 + self.__costb * p_dg + self.__costc
+        generate_costs = costa * pd ** 2 + costb * pd + costc
         # buy
-        buy = p_pv * self.observation_space[0, self.__node[0], self.__node[1]]
+        buy = pg * self.observation_space[0, self.__node[0], self.__node[1]]
 
         eco_reward = maintenance + generate_costs + buy
 
@@ -119,21 +120,24 @@ class MicroGrid:
         sec_reward = (v - self.__ref_voltage) ** 2
 
         # environmental objective
-        env_reward = p_dg * self.__generate_env_param + p_pv * self.__buy_env_param
+        env_reward = pd * self.__env_param + pg * self.__env_param
 
         # reward
         reward = - eco_reward - sec_reward - env_reward - limitations
 
         # refresh state
-        self.state = (self.observation_space[0, self.__node[0], self.__node[1]],
-                      self.observation_space[1, self.__node[0], self.__node[1]],
-                      self.observation_space[2, self.__node[0], self.__node[1]],
-                      self.battery)
+        state = (self.observation_space[0, self.__node[0], self.__node[1]],
+                 self.observation_space[1, self.__node[0], self.__node[1]],
+                 self.observation_space[2, self.__node[0], self.__node[1]])
+
+        state = tf.expand_dims(state, 0)
+        reward = tf.expand_dims(reward, 0)
 
         # point to the next column or step or data
         self.__node[1] += 1
+        print("\n")
 
-        return self.state, reward, False, False
+        return state, reward, soc
 
     def turn(self):
         # next turn is beginning and the step reset to 0
@@ -145,13 +149,11 @@ class MicroGrid:
     def reset(self):
         # first turn is beginning turn and step are reset to 0
         self.__node = [0, 0]
-        self.battery = 0
         # refresh state
-        self.state = (
-            self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0],
-            self.battery)
+        state = (
+            self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0],)
 
-        return self.state
+        return state
 
     def define_observation_space(self, prize_url="prize.csv", pv_url="pv.csv", load_url="load.csv"):
         # load the load, prize and pv data

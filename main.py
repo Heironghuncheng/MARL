@@ -1,25 +1,27 @@
-from pprint import pprint
+# coding=utf-8
+
+import hashlib
+import logging
+import time
+
+import tensorflow as tf
+
 from envs.micro_grid import MicroGrid
-import numpy as np
+from newa2c import Agent
 
+if __name__ == "__main__":
 
-env = MicroGrid()
-env.define_observation_space('./envs/load.csv', './envs/prize.csv', './envs/pv.csv')
+    agent = Agent(128, 0, -200, 200, 100, 400, 0, 500, 0.0035, 0.0025, 8, 300)
+    env = MicroGrid()
+    env.define_observation_space('./envs/load.csv', './envs/prize.csv', './envs/pv.csv')
 
-env.reset()
-for i in range(env.rows):
-    if i != 0:
-        env.turn()
-    for t in range(env.columns):
-        action = []
-        for j in range(3):
-            action.append(np.random.uniform(env.action_space[j][0], env.action_space[j][1], 1)[0])
-        action = tuple(action)
-        observation, reward, done, info = env.step(action)
-        pprint(observation)
-        pprint(reward)
-        print('\n')
-        # if done:
-        #     pprint("Episode finished after {} timesteps".format(t + 1))
-        #     break
-
+    first_state = tf.expand_dims(env.reset(), 0)
+    for i in range(env.rows):
+        if i != 0:
+            env.turn()
+        for t in range(env.columns):
+            next_state, _ = agent.multi_object(first_state, env)
+            print(_)
+            first_state = next_state
+    first_state = tf.expand_dims(env.reset(), 0)
+    _, reward = agent.multi_object(first_state, env)

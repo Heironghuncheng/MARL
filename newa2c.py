@@ -1,12 +1,12 @@
 # coding=utf-8
 
-import tensorflow as tf
-
-from envs.micro_grid import MicroGrid
-
-from numpy import iterable
 import logging
 import time
+
+import tensorflow as tf
+import tensorflow_probability as tfp
+
+from envs.micro_grid import MicroGrid
 
 
 class Actor(tf.keras.Model):
@@ -14,14 +14,18 @@ class Actor(tf.keras.Model):
         super().__init__()
         self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
         self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.actor_pd = tf.keras.layers.Dense(1, activation="relu")
-        self.actor_pg = tf.keras.layers.Dense(1, activation="relu")
-        self.actor_pb = tf.keras.layers.Dense(1, activation="relu")
+        self.actor_pd_u = tf.keras.layers.Dense(1, activation="tanh")
+        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="relu")
+        self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh")
+        self.actor_pg_sig = tf.keras.layers.Dense(1, activation="relu")
+        self.actor_pb_u = tf.keras.layers.Dense(1, activation="tanh")
+        self.actor_pb_sig = tf.keras.layers.Dense(1, activation="relu")
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
         x = self.hidden2(x)
-        return self.actor_pd(x), self.actor_pg(x), self.actor_pb(x)
+        return (self.actor_pd_u(x) * 4500, self.actor_pd_sig(x)), (self.actor_pg_u(x) * 1000, self.actor_pg_sig(x)), (
+            self.actor_pb_u(x) * 1000, self.actor_pb_sig(x))
 
 
 class Critic(tf.keras.Model):
@@ -29,7 +33,7 @@ class Critic(tf.keras.Model):
         super().__init__()
         self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
         self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.critic = tf.keras.layers.Dense(1, activation="relu")
+        self.critic = tf.keras.layers.Dense(1)
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
@@ -42,7 +46,7 @@ class LongTermReturn(tf.keras.Model):
         super().__init__()
         self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
         self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.returns = tf.keras.layers.Dense(1, activation="relu")
+        self.returns = tf.keras.layers.Dense(1)
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
@@ -55,29 +59,17 @@ class AveragedReturn(tf.keras.Model):
         super().__init__()
         self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
         self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.returns = tf.keras.layers.Dense(1, activation="relu")
+        self.returns = tf.keras.layers.Dense(1)
 
-    def call(self, inputs: dict, training=None, mask=None):
+    def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
         x = self.hidden2(x)
         return self.returns(x)
 
 
 def alert(x: tf.Tensor):
-    x = tf.math.is_nan(x)
-    if iterable(x):
-        for i in x:
-            if iterable(i):
-                for j in i:
-                    if iterable(j):
-                        for n in j:
-                            assert bool(n == tf.constant(False))
-                    else:
-                        assert bool(j == tf.constant(False))
-            else:
-                assert bool(i == tf.constant(False))
-    else:
-        assert bool(x == tf.constant(False))
+    # Check if x contains any NaN values
+    tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
 
 
 class Agent:
@@ -97,6 +89,7 @@ class Agent:
         self.avg_long_term_estimate = None
         self.action = None
         self.action_prob = None
+        self.action_goose = None
 
         self.long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
         self.avg_long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
@@ -136,7 +129,7 @@ class Agent:
             alert(reward)
             long_term_estimate = self.long_term_return(reward)
             alert(long_term_estimate)
-            loss = (long_term_estimate - reward) ** 2
+            loss = tf.square(long_term_estimate - reward)
             alert(loss)
         grads = tape.gradient(loss, self.long_term_return.trainable_variables)
         self.long_optimizer.apply_gradients(zip(grads, self.long_term_return.trainable_variables))
@@ -146,45 +139,27 @@ class Agent:
         with tf.GradientTape() as tape:
             avg_long_term_estimate = self.averaged_return(reward)
             alert(avg_long_term_estimate)
-            alpha = reward - avg_long_term_estimate
-            alert(alpha)
-            avg_long_term_return_ln = tf.math.log(avg_long_term_estimate)
-            loss = -tf.math.reduce_sum(avg_long_term_return_ln * alpha)
+            loss = reward - avg_long_term_estimate
             alert(loss)
         grads = tape.gradient(loss, self.averaged_return.trainable_variables)
         self.avg_long_optimizer.apply_gradients(zip(grads, self.averaged_return.trainable_variables))
         return avg_long_term_estimate
 
     def op_act(self, avg_long_term_return, long_term_return, state_t, state_t_plus, action_probs):
-        if self.value_t_plus is None:
-            value_t = self.critic(state_t)
-        else:
-            value_t = self.value_t_plus
+        value_t = self.critic(state_t) if self.value_t_plus is None else self.value_t_plus
         value_t_plus = self.critic(state_t_plus)
-        td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
-        td_error = tf.reshape(td_error, [1, 1])
-        alert(td_error)
-        loss = None
-        for i in action_probs:
-            action_ln_probs = tf.math.log(i)
-            alert(action_ln_probs)
-            if loss is None:
-                loss = -tf.math.reduce_sum(action_ln_probs * td_error)
-            else:
-                loss += -tf.math.reduce_sum(action_ln_probs * td_error)
-        alert(loss)
-        alert(value_t)
         alert(value_t_plus)
+        td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
+        loss = tf.math.reduce_sum([tf.math.reduce_sum(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1] + 1e-9).log_prob(value=self.action[i]) * td_error) for i in range(3)])
+        alert(td_error)
+        alert(loss)
         return loss, value_t, value_t_plus
 
     @staticmethod
     def op_critic(long_term_return, value_t, value_t_plus, reward):
         td_error = reward - long_term_return + value_t_plus - value_t
         alert(td_error)
-        value_t_plus_ln = tf.math.log(value_t_plus)
-        print(value_t_plus)
-        alert(value_t_plus_ln)
-        loss = -tf.math.reduce_sum(value_t_plus_ln * td_error)
+        loss = tf.square(td_error)
 
         return loss
 
@@ -208,7 +183,6 @@ class Agent:
                                                                     self.state_t, self.state_t_plus, self.action_prob,
                                                                     )
                 alert(loss)
-                print("loss", loss)
             grads = tape.gradient(loss, self.actor.trainable_variables)
             logging.debug(("actor loss", loss))
             logging.debug(("actor grads", grads))
@@ -216,22 +190,9 @@ class Agent:
             loss = self.op_critic(self.long_term_estimate, self.value_t, self.value_t_plus, reward)
             alert(loss)
         grads = tape_.gradient(loss, self.critic.trainable_variables)
+        self.critic_optimizer.apply_gradients(zip(grads, self.critic.trainable_variables))
         logging.debug(("critic loss", loss))
         logging.debug(("critic grads", grads))
-        self.critic_optimizer.apply_gradients(zip(grads, self.critic.trainable_variables))
+        alert(loss)
         return next_state, reward
 
-    def show(self, state):
-        return self.get_action(state)
-
-
-class DMOAC:
-    def __init__(self, num_actions, num_hidden_units, agent_list, ):
-        pass
-
-    def train(self):
-        pass
-
-
-if __name__ == "__main__":
-    pass

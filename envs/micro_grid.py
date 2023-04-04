@@ -73,14 +73,12 @@ class MicroGrid:
             return 0
 
     def step(self, action, soc, battery_cap, battery_cost, costa, costb, costc):
-        print("****ENV****")
 
         # action: generate buy battery
 
         # voltage value
         pd, pg, pb = action
         v = pd * self.__voltage_para + self.slack
-        print(action)
 
         # limitations
 
@@ -123,7 +121,7 @@ class MicroGrid:
         env_reward = pd * self.__env_param + pg * self.__env_param
 
         # reward
-        reward = - eco_reward - sec_reward - env_reward - limitations
+        reward = - eco_reward - sec_reward - env_reward - limitations + 1000000
 
         # refresh state
         state = (self.observation_space[0, self.__node[0], self.__node[1]],
@@ -135,7 +133,6 @@ class MicroGrid:
 
         # point to the next column or step or data
         self.__node[1] += 1
-        print("\n")
 
         return state, reward, soc
 

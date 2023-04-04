@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import time
+import tqdm
 
 import tensorflow as tf
 
@@ -16,12 +17,15 @@ if __name__ == "__main__":
     env.define_observation_space('./envs/load.csv', './envs/prize.csv', './envs/pv.csv')
 
     first_state = tf.expand_dims(env.reset(), 0)
-    for i in range(env.rows):
-        if i != 0:
-            env.turn()
-        for t in range(env.columns):
-            next_state, _ = agent.multi_object(first_state, env)
-            print(_)
-            first_state = next_state
+    with tqdm.trange(20) as t:
+        for i in t:
+            if i != 0:
+                env.turn()
+            for j in range(env.columns):
+                next_state, reward = agent.multi_object(first_state, env)
+                # print(reward)
+                first_state = next_state
+            t.set_description(f'Episode {i}')
     first_state = tf.expand_dims(env.reset(), 0)
     _, reward = agent.multi_object(first_state, env)
+    print("test reward", reward)

@@ -4,9 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="766f3de4-b325-45e9-9d3b-fbc1a1b21740" name="变更" comment="修正了电池限制">
-      <change afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
+    <list default="true" id="766f3de4-b325-45e9-9d3b-fbc1a1b21740" name="变更" comment="completed the newa2c">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/envs/load.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/load.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/envs/micro_grid.py" beforeDir="false" afterPath="$PROJECT_DIR$/envs/micro_grid.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/envs/prize.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/prize.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/envs/pv.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/pv.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/newa2c.py" beforeDir="false" afterPath="$PROJECT_DIR$/newa2c.py" afterDir="false" />
     </list>
@@ -160,8 +163,8 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main (1)" />
-        <item itemvalue="Python.test" />
         <item itemvalue="Python.newa2c" />
+        <item itemvalue="Python.test" />
         <item itemvalue="Python.micro_grid" />
         <item itemvalue="Python.a2c" />
       </list>
@@ -183,7 +186,14 @@
       <option name="project" value="LOCAL" />
       <updated>1679242008853</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="completed the newa2c">
+      <created>1680525465517</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1680525465517</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -199,7 +209,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="修正了电池限制" />
-    <option name="LAST_COMMIT_MESSAGE" value="修正了电池限制" />
+    <MESSAGE value="completed the newa2c" />
+    <option name="LAST_COMMIT_MESSAGE" value="completed the newa2c" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

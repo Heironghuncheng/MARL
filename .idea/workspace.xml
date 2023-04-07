@@ -5,13 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="766f3de4-b325-45e9-9d3b-fbc1a1b21740" name="变更" comment="completed the newa2c">
+      <change afterPath="$PROJECT_DIR$/envs/func.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/newa2c_test.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/envs/load.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/load.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/envs/micro_grid.py" beforeDir="false" afterPath="$PROJECT_DIR$/envs/micro_grid.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/envs/prize.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/prize.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/envs/pv.csv" beforeDir="false" afterPath="$PROJECT_DIR$/envs/pv.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/newa2c.py" beforeDir="false" afterPath="$PROJECT_DIR$/newa2c.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,7 +45,7 @@
     &quot;settings.editor.selected.configurable&quot;: &quot;Errors&quot;
   }
 }</component>
-  <component name="RunManager" selected="Python.main (1)">
+  <component name="RunManager" selected="Python.test">
     <configuration name="a2c" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Distribute" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -162,9 +160,9 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.test" />
         <item itemvalue="Python.main (1)" />
         <item itemvalue="Python.newa2c" />
-        <item itemvalue="Python.test" />
         <item itemvalue="Python.micro_grid" />
         <item itemvalue="Python.a2c" />
       </list>
@@ -193,7 +191,14 @@
       <option name="project" value="LOCAL" />
       <updated>1680525465517</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="completed the newa2c">
+      <created>1680620345073</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1680620345073</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

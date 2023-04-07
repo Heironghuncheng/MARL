@@ -117,11 +117,12 @@ class Agent:
 
     def get_action(self, state):
         alert(state)
-        self.action_prob = self.actor(state)
+        self.action_goose = self.actor(state)
+        self.action_prob = self.action_goose
         alert(self.action_prob)
         self.action = (
-            tf.random.normal([1, 1], 0, self.action_prob[0]), tf.random.normal([1, 1], 0, self.action_prob[1]),
-            tf.random.normal([1, 1], 0, self.action_prob[2]))
+            tf.random.normal([1, 1], self.action_goose[0][0], self.action_goose[0][1]), tf.random.normal([1, 1], self.action_goose[1][0], self.action_goose[1][1]),
+            tf.random.normal([1, 1], self.action_goose[2][0], self.action_goose[2][1]))
         return self.action
 
     def long_term_func(self, reward: tf.Tensor):
@@ -196,3 +197,14 @@ class Agent:
         alert(loss)
         return next_state, reward
 
+
+class DMOAC:
+    def __init__(self, num_actions, num_hidden_units, agent_list, ):
+        pass
+
+    def train(self):
+        pass
+
+
+if __name__ == "__main__":
+    pass

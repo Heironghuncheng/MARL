@@ -139,7 +139,7 @@ class MicroGrid:
         # 3200
 
         # reward
-        reward = - eco_reward - sec_reward - env_reward - limitations
+        reward = (- eco_reward - sec_reward - env_reward - limitations + 30000) / 10000
 
         # refresh state
         state = (self.observation_space[0, self.__node[0], self.__node[1]],

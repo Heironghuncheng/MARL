@@ -199,7 +199,7 @@ class Agent:
         value_t_plus = self.critic(state_t_plus)
         self.alert(value_t_plus)
         # td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
-        td_error = reward + 0.95 * (value_t_plus - value_t)
+        td_error = reward + 0.95 * value_t_plus - value_t
         loss = tf.math.reduce_sum([
             tf.multiply(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1] + 1e-9).log_prob(
                 value=self.action[i]), td_error) for i in range(3)])
@@ -216,8 +216,8 @@ class Agent:
         # td_error = value_t_plus - value_t
         # self.self.alert(td_error)
         # loss = -tf.reduce_sum(tf.losses.mean_squared_error(value_t_plus, reward + 0.95 * value_t))
-        loss = tf.square(reward + 0.95 * (value_t_plus - value_t))
-        loss = -tf.reduce_sum(loss)
+        loss = tf.square(reward + 0.95 * value_t_plus - value_t)
+        loss = tf.reduce_sum(loss)
         return loss
 
     def multi_object(self, init_state, env, writer, turn):

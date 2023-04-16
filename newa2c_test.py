@@ -29,8 +29,8 @@ class Actor(tf.keras.Model):
         x = self.normal1(x)
         x = self.hidden2(x)
         x = self.normal2(x)
-        return (self.actor_pd_u(x), abs(self.actor_pd_sig(x))), (self.actor_pg_u(x), abs(self.actor_pg_sig(x))), (
-            self.actor_pb_u(x), abs(self.actor_pb_sig(x)))
+        return (self.actor_pd_u(x), tf.math.exp(self.actor_pd_sig(x))), (self.actor_pg_u(x), tf.math.exp(self.actor_pg_sig(x))), (
+            self.actor_pb_u(x), tf.math.exp(self.actor_pb_sig(x)))
 
 
 class Critic(tf.keras.Model):
@@ -200,7 +200,7 @@ class Agent:
         self.alert(value_t_plus)
         # td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
         td_error = reward + 0.95 * value_t_plus - value_t
-        loss = tf.math.reduce_sum([
+        loss = -tf.math.reduce_sum([
             tf.multiply(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1] + 1e-9).log_prob(
                 value=self.action[i]), td_error) for i in range(3)])
         # loss = tf.reduce_sum(tfp.distributions.Normal(loc=action_probs[0][0], scale=action_probs[0][1] + 1e-9).log_prob(
@@ -240,6 +240,7 @@ class Agent:
                         action[2] += self.pb_min - action[2]
                     # write(writer, turn, step, tf.squeeze(action), "action")
                     next_state, reward, self.soc = env.step(tuple(action), self.soc, self.pb_max, self.battery_cost, self.costa,self.costb,self.costc,self.voltage_para)
+                    # next_state, reward, end = env.step(action[0])
                     self.state_t = init_state
                     self.state_t_plus = next_state
                     self.reward = reward
@@ -258,6 +259,10 @@ class Agent:
             grads = tape_.gradient(loss, self.critic.trainable_variables)
             self.critic_optimizer.apply_gradients(zip(grads, self.critic.trainable_variables))
             self.alert(loss)
+            logging.info(action)
+            logging.info(reward)
+            logging.info(self.value_t_plus)
+            logging.info(self.action_goose[0])
             init_state = tf.reshape(next_state, shape=(1, 3))
             all_reward += reward
             step += 1
@@ -265,7 +270,7 @@ class Agent:
             # if end:
             #     # write(writer, turn, step, all_reward, "reward")
             #     return all_reward
-            # write(writer, turn, step, self.action_goose[0][1].nparray, "squre")
+            # # write(writer, turn, step, self.action_goose[0][1].nparray, "squre")
         return all_reward
 
 

@@ -77,7 +77,8 @@ class MicroGrid:
         # action: generate buy battery
 
         # voltage value
-        pd, pg, pb = action
+        pd, pg= action
+        # , pb
         v = pd * voltage_para + self.__slack
 
         # vmax = 270
@@ -139,14 +140,15 @@ class MicroGrid:
         # 3200
 
         # reward
-        reward = (- eco_reward - sec_reward - env_reward - limitations + 30000) / 10000
+        reward = (- eco_reward - sec_reward - env_reward) - limitations * 10
 
         # refresh state
         state = (self.observation_space[0, self.__node[0], self.__node[1]],
                  self.observation_space[1, self.__node[0], self.__node[1]],
                  self.observation_space[2, self.__node[0], self.__node[1]])
 
-        print(reward)
+        # print(limitations)
+
 
         state = tf.expand_dims(state, 0)
         reward = tf.expand_dims(reward, 0)

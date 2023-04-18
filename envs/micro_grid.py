@@ -5,9 +5,15 @@ from pandas import read_csv
 import tensorflow as tf
 
 
+def write(writer, turn, step, var, name):
+    with writer.as_default():
+        tf.summary.scalar(name + str(turn), var, step=step)
+        tf.summary.flush()
+
+
 class MicroGrid:
 
-    def __init__(self, **config):
+    def __init__(self, writer, **config):
         # action space
         # generate or buy or use battery
         # self.__action_space_dict = {"PD_min": 100, "PD_max": 400, "PG_max": 500, "PG_min": 500,
@@ -51,6 +57,8 @@ class MicroGrid:
         self.__low_voltage = 213.4
         self.__high_voltage = 242
         self.__voltage_limit = 500
+        self.writer = writer
+        self.time_step = 1
 
         # target
         # Economic consumption function
@@ -64,6 +72,11 @@ class MicroGrid:
 
         # environmental objective
         self.__env_param = 1.6491
+
+    def write(self, step, var, name):
+        with self.writer.as_default():
+            tf.summary.scalar(name, var, step=step)
+            tf.summary.flush()
 
     @staticmethod
     def indicator(num):
@@ -142,13 +155,15 @@ class MicroGrid:
         # reward
         reward = (- eco_reward - sec_reward - env_reward) - limitations * 10
 
+        self.write(self.time_step, tf.squeeze(limitations), "limitations")
+        self.time_step += 1
+
         # refresh state
         state = (self.observation_space[0, self.__node[0], self.__node[1]],
                  self.observation_space[1, self.__node[0], self.__node[1]],
                  self.observation_space[2, self.__node[0], self.__node[1]])
 
         # print(limitations)
-
 
         state = tf.expand_dims(state, 0)
         reward = tf.expand_dims(reward, 0)

@@ -10,15 +10,10 @@ import random
 
 if __name__ == "__main__":
     # turn = 0
-    agent = Agent(32, 0, -500, 500, 0, 1000, 0, 1000, 0.0035, 0.0025, 8, 300, 0.05)
-    env = MicroGrid()
-    env.define_observation_space('./envs/load.csv', './envs/prize.csv', './envs/pv.csv')
     writer = tf.summary.create_file_writer("./log")
-    # first_state = tf.expand_dims(env.reset(), 0)
-    # env = gym.make('MountainCarContinuous-v0', render_mode="human")
-    # first_state = tf.expand_dims(env.reset(), 0)
-    # first_state, _ = env.reset(0)
-    # first_state = tf.expand_dims(first_state, 0)
+    agent = Agent(32, 0, -500, 500, 0, 1000, 0, 1000, 0.0035, 0.0025, 8, 300, 0.05)
+    env = MicroGrid(writer)
+    env.define_observation_space('./envs/load.csv', './envs/prize.csv', './envs/pv.csv')
     with tqdm.trange(30000) as t:
         # env.render()
         for i in t:

@@ -6,6 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="766f3de4-b325-45e9-9d3b-fbc1a1b21740" name="变更" comment="completed the newa2c">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/envs/micro_grid.py" beforeDir="false" afterPath="$PROJECT_DIR$/envs/micro_grid.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/newa2c_test.py" beforeDir="false" afterPath="$PROJECT_DIR$/newa2c_test.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
     </list>

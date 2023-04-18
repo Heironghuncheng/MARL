@@ -18,11 +18,11 @@ class Actor(tf.keras.Model):
         self.normal2 = tf.keras.layers.BatchNormalization()
         # , activation = "tanh"
         self.actor_pd_u = tf.keras.layers.Dense(1, activation="relu", kernel_initializer=initializer)
-        self.actor_pd_sig = tf.keras.layers.Dense(1, activation = "tanh", kernel_initializer=initializer)
+        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=initializer)
         self.actor_pg_u = tf.keras.layers.Dense(1, activation="relu", kernel_initializer=initializer)
-        self.actor_pg_sig = tf.keras.layers.Dense(1, activation = "tanh", kernel_initializer=initializer)
+        self.actor_pg_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=initializer)
         self.actor_pb_u = tf.keras.layers.Dense(1, kernel_initializer=initializer)
-        self.actor_pb_sig = tf.keras.layers.Dense(1, activation = "tanh", kernel_initializer=initializer)
+        self.actor_pb_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=initializer)
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
@@ -57,17 +57,17 @@ class Critic(tf.keras.Model):
         return self.critic(x)
 
 
-class LongTermReturn(tf.keras.Model):
-    def __init__(self, num_hidden_units: int):
-        super().__init__()
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="relu")
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="relu")
-        self.returns = tf.keras.layers.Dense(1)
-
-    def call(self, inputs, training=None, mask=None):
-        x = self.hidden1(inputs)
-        x = self.hidden2(x)
-        return self.returns(x)
+# class LongTermReturn(tf.keras.Model):
+#     def __init__(self, num_hidden_units: int):
+#         super().__init__()
+#         self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="relu")
+#         self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="relu")
+#         self.returns = tf.keras.layers.Dense(1)
+#
+#     def call(self, inputs, training=None, mask=None):
+#         x = self.hidden1(inputs)
+#         x = self.hidden2(x)
+#         return self.returns(x)
 
 
 class AveragedReturn(tf.keras.Model):
@@ -94,7 +94,7 @@ class Agent:
                  costb, costc, voltage_para):
         self.actor = Actor(num_hidden_units)
         self.critic = Critic(num_hidden_units)
-        self.long_term_return = LongTermReturn(num_hidden_units)
+        # self.long_term_return = LongTermReturn(num_hidden_units)
         self.averaged_return = AveragedReturn(num_hidden_units)
 
         self.state_t = None
@@ -108,10 +108,10 @@ class Agent:
         self.action_prob = None
         self.action_goose = None
 
-        self.long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        # self.long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         self.avg_long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-        self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
         self.soc = soc
         self.pb_min = pb_min
@@ -154,12 +154,11 @@ class Agent:
 
     def get_action(self, state):
         # self.alert(state)
-        self.action_goose = self.actor(state)
-        self.action_prob = self.action_goose
+        self.action_prob = self.actor(state)
         self.alert(self.action_prob)
         self.action = (
-            tf.random.normal([1], self.action_goose[0][0], self.action_goose[0][1]),
-            tf.random.normal([1], self.action_goose[1][0], self.action_goose[1][1]))
+            tf.random.normal([1], mean=self.action_prob[0][0], stddev=self.action_prob[0][1]),
+            tf.random.normal([1], self.action_prob[1][0], self.action_prob[1][1]))
         # ,
         #             tf.random.normal([1], self.action_goose[2][0], self.action_goose[2][1])
         # print(self.action_goose)
@@ -182,19 +181,19 @@ class Agent:
     #     # print(long_term_estimate)
     #     return long_term_estimate
 
-    # def long_term_func(self, reward: tf.Tensor):
-    #     self.long_term_estimate += 0.01 * (reward - self.long_term_estimate)
-    #     return self.long_term_estimate
-    #
-    # def avg_long_term_func(self, reward: tf.Tensor):
-    #     with tf.GradientTape() as tape:
-    #         avg_long_term_estimate = self.averaged_return(reward)
-    #         self.alert(avg_long_term_estimate)
-    #         loss = reward - avg_long_term_estimate
-    #         self.alert(loss)
-    #     grads = tape.gradient(loss, self.averaged_return.trainable_variables)
-    #     self.avg_long_optimizer.apply_gradients(zip(grads, self.averaged_return.trainable_variables))
-    #     return avg_long_term_estimate, loss
+    def long_term_func(self, reward):
+        self.long_term_estimate += 0.01 * (reward - self.long_term_estimate)
+        return self.long_term_estimate
+
+    def avg_long_term_func(self, reward: tf.Tensor):
+        with tf.GradientTape() as tape:
+            avg_long_term_estimate = self.averaged_return(reward)
+            self.alert(avg_long_term_estimate)
+            loss = reward - avg_long_term_estimate
+            self.alert(loss)
+        grads = tape.gradient(loss, self.averaged_return.trainable_variables)
+        self.avg_long_optimizer.apply_gradients(zip(grads, self.averaged_return.trainable_variables))
+        return avg_long_term_estimate, loss
 
     def op_act(self, avg_long_term_return, long_term_return, state_t, state_t_plus, action_probs, reward):
         value_t = self.critic(state_t) if self.value_t_plus is None else self.value_t_plus
@@ -202,13 +201,10 @@ class Agent:
         self.alert(value_t_plus)
         # td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
         td_error = reward + 0.95 * value_t_plus - value_t
+        # loss of actor must be positive
         loss = tf.math.reduce_sum([
-            tf.multiply(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1] + 1e-9).log_prob(
+            tf.multiply(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1]).log_prob(
                 value=self.action[i]), td_error) for i in range(2)])
-        # loss = tf.reduce_sum(tfp.distributions.Normal(loc=action_probs[0][0], scale=action_probs[0][1] + 1e-9).log_prob(
-        #         value=self.action[0]) * td_error)
-        # print(loss)
-        # print(action_probs[0][0])
         self.alert(action_probs)
         self.alert(td_error)
         self.alert(loss)
@@ -216,11 +212,11 @@ class Agent:
 
     @staticmethod
     def op_critic(long_term_return, value_t, value_t_plus, reward):
-        # td_error = reward - long_term_return + value_t_plus - value_t
+        td_error = reward - long_term_return + value_t_plus - value_t
         # td_error = value_t_plus - value_t
         # self.self.alert(td_error)
         # loss = -tf.reduce_sum(tf.losses.mean_squared_error(value_t_plus, reward + 0.95 * value_t))
-        loss = -tf.square(reward + 0.95 * value_t_plus - value_t)
+        loss = -tf.square(td_error)
         # loss = -tf.reduce_sum(loss)
         return loss
 
@@ -251,8 +247,8 @@ class Agent:
                     self.state_t = init_state
                     self.state_t_plus = next_state
                     self.reward = reward
-                    # self.long_term_estimate = self.long_term_func(self.reward)
-                    # self.avg_long_term_estimate, loss = self.avg_long_term_func(self.reward)
+                    self.long_term_estimate = self.long_term_func(self.reward)
+                    self.avg_long_term_estimate, loss = self.avg_long_term_func(self.reward)
                     # write(writer, turn, step, loss, "loss_avg")
                     loss, self.value_t, self.value_t_plus = self.op_act(self.avg_long_term_estimate,
                                                                         self.long_term_estimate,

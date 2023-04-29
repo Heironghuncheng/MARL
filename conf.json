@@ -1,0 +1,76 @@
+{
+  "num_hidden_units": 32,
+  "agents": [
+    {
+      "soc": 0,
+      "pb_min": -500,
+      "pb_max": 500,
+      "pd_min":0,
+      "pd_max": 1000,
+      "pg_min": 0,
+      "pg_max": 1000,
+      "battery_cost": 0.0035,
+      "costa": 0.0025,
+      "costb": 8,
+      "costc": 300,
+      "voltage_para": 0.05
+    },
+        {
+      "soc": 0,
+      "pb_min": -500,
+      "pb_max": 500,
+      "pd_min":0,
+      "pd_max": 1000,
+      "pg_min": 0,
+      "pg_max": 1000,
+      "battery_cost": 0.0035,
+      "costa": 0.0025,
+      "costb": 8,
+      "costc": 300,
+      "voltage_para": 0.05
+    },
+    {
+      "soc": 0,
+      "pb_min": -500,
+      "pb_max": 500,
+      "pd_min": 0,
+      "pd_max": 1000,
+      "pg_min": 0,
+      "pg_max": 1000,
+      "battery_cost": 0.0035,
+      "costa": 0.0025,
+      "costb": 8,
+      "costc": 300,
+      "voltage_para": 0.05
+    },
+        {
+      "soc": 0,
+      "pb_min": -500,
+      "pb_max": 500,
+      "pd_min":0,
+      "pd_max": 1000,
+      "pg_min": 0,
+      "pg_max": 1000,
+      "battery_cost": 0.0035,
+      "costa": 0.0025,
+      "costb": 8,
+      "costc": 300,
+      "voltage_para": 0.05
+    },
+        {
+      "soc": 0,
+      "pb_min": -500,
+      "pb_max": 500,
+      "pd_min":0,
+      "pd_max": 1000,
+      "pg_min": 0,
+      "pg_max": 1000,
+      "battery_cost": 0.0035,
+      "costa": 0.0025,
+      "costb": 8,
+      "costc": 300,
+      "voltage_para": 0.05
+    }
+  ]
+}
+

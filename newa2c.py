@@ -1,101 +1,210 @@
 # coding=utf-8
 
+import json
 import logging
-import time
+import os
+import random
+from multiprocessing import Process
+from time import time
+from typing import Union
 
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from envs.micro_grid import MicroGrid
+
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+
+    def default(self, obj):
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+                            np.int16, np.int32, np.int64, np.uint8,
+                            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32,
+                              np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 
 class Actor(tf.keras.Model):
     def __init__(self, num_hidden_units: int):
         super().__init__()
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.actor_pd_u = tf.keras.layers.Dense(1, activation="tanh")
-        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="relu")
-        self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh")
-        self.actor_pg_sig = tf.keras.layers.Dense(1, activation="relu")
-        self.actor_pb_u = tf.keras.layers.Dense(1, activation="tanh")
-        self.actor_pb_sig = tf.keras.layers.Dense(1, activation="relu")
+        kernel_initializer = tf.keras.initializers.RandomUniform(minval=0., maxval=0.2)
+        bias_initializer = tf.keras.initializers.Constant(0.1)
+        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
+        self.normal1 = tf.keras.layers.LayerNormalization()
+        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
+        self.normal2 = tf.keras.layers.LayerNormalization()
+        # , activation = "tanh"
+        self.actor_pd_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                bias_initializer=bias_initializer)
+        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                  bias_initializer=bias_initializer)
+        # self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        # self.actor_pg_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        # self.actor_pb_u = tf.keras.layers.Dense(1, kernel_initializer=initializer)
+        # self.actor_pb_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=initializer)
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
+        x = self.normal1(x)
         x = self.hidden2(x)
-        return (self.actor_pd_u(x) * 4500, self.actor_pd_sig(x)), (self.actor_pg_u(x) * 1000, self.actor_pg_sig(x)), (
-            self.actor_pb_u(x) * 1000, self.actor_pb_sig(x))
+        x = self.normal2(x)
+        #  (
+        #             self.actor_pb_u(x), tf.math.exp(self.actor_pb_sig(x)))
+        return (abs(self.actor_pd_u(x)), abs(self.actor_pd_sig(x))), (
+            abs(self.actor_pg_u(x)), abs(self.actor_pg_sig(x)))
 
 
 class Critic(tf.keras.Model):
     def __init__(self, num_hidden_units: int):
         super().__init__()
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.critic = tf.keras.layers.Dense(1)
+        kernel_initializer = tf.keras.initializers.RandomNormal(mean=0., stddev=0.01)
+        bias_initializer = tf.keras.initializers.Constant(0.1)
+        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
+        self.normal1 = tf.keras.layers.LayerNormalization()
+        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
+        self.normal2 = tf.keras.layers.LayerNormalization()
+        self.critic = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                            bias_initializer=bias_initializer)
 
     def call(self, inputs, training=None, mask=None):
+        # inputs = tf.reshape(inputs, shape=(1, 1))
         x = self.hidden1(inputs)
+        x = tf.squeeze(x)
+        x = self.normal1(x)
+        x = tf.expand_dims(x, axis=0)
         x = self.hidden2(x)
+        x = tf.squeeze(x)
+        x = self.normal2(x)
+        x = tf.expand_dims(x, axis=0)
         return self.critic(x)
-
-
-class LongTermReturn(tf.keras.Model):
-    def __init__(self, num_hidden_units: int):
-        super().__init__()
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.returns = tf.keras.layers.Dense(1)
-
-    def call(self, inputs, training=None, mask=None):
-        x = self.hidden1(inputs)
-        x = self.hidden2(x)
-        return self.returns(x)
 
 
 class AveragedReturn(tf.keras.Model):
     def __init__(self, num_hidden_units: int):
         super().__init__()
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units)
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units)
-        self.returns = tf.keras.layers.Dense(1)
+        initializer = tf.keras.initializers.RandomUniform(minval=-0.05, maxval=0.05, seed=random.randint(1, 100))
+        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=initializer,
+                                             bias_initializer=initializer)
+        self.normal1 = tf.keras.layers.BatchNormalization()
+        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=initializer,
+                                             bias_initializer=initializer)
+        self.normal2 = tf.keras.layers.BatchNormalization()
+        self.returns = tf.keras.layers.Dense(1, kernel_initializer=initializer, bias_initializer=initializer)
 
     def call(self, inputs, training=None, mask=None):
         x = self.hidden1(inputs)
+        x = self.normal1(x)
         x = self.hidden2(x)
+        x = self.normal2(x)
         return self.returns(x)
 
 
-def alert(x: tf.Tensor):
-    # Check if x contains any NaN values
-    tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
+def save_model(model: Union[Critic, Actor, AveragedReturn], exname=None, base="model"):
+    base = "./" + base + "/"
+    if exname is None:
+        path = "model_" + str(type(model)).split("'")[1].split(".")[1]
+    else:
+        path = "model_" + str(type(model)).split("'")[1].split(".")[1] + exname
+    if os.path.exists(base + path):
+        pass
+    else:
+        os.mkdir(base + path)
+    model.save_weights(base + path + "/ckpt")
+    return
 
 
-class Agent:
+def load_model(model: Union[Critic, Actor, AveragedReturn], exname=None, base="model"):
+    base = "./" + base + "/"
+    if exname is None:
+        path = "model_" + str(type(model)).split("'")[1].split(".")[1]
+    else:
+        path = "model_" + str(type(model)).split("'")[1].split(".")[1] + exname
+    if os.path.exists(base + path):
+        if isinstance(model, AveragedReturn):
+            model(tf.expand_dims([0], 0))
+        else:
+            model(tf.expand_dims([0, 0, 0], 0))
+        model.load_weights(base + path + "/ckpt")
+    return model
+
+
+def save_optimizer(optimizer: tf.keras.optimizers.Adam, name: str, base="model"):
+    base = "./" + base + "/"
+    path = "optimizer"
+    if os.path.exists(base + path):
+        pass
+    else:
+        os.mkdir(base + path)
+    with open(base + 'optimizer/' + name + '_optimizer.json', 'w') as f:
+        json.dump(optimizer.get_config(), f, cls=NumpyEncoder)
+    return
+
+
+def load_optimizer(optimizer: tf.keras.optimizers.Adam, name: str, base="model"):
+    base = "./" + base + "/"
+    if os.path.exists(base + 'optimizer/' + name + '_optimizer.json'):
+        with open(base + 'optimizer/' + name + '_optimizer.json', 'r') as f:
+            optimizer.from_config(json.load(f))
+    return optimizer
+
+
+def save_long_return(long_return, name: str, base="model"):
+    base = "./" + base + "/"
+    path = "long_return"
+    if os.path.exists(base + path):
+        pass
+    else:
+        os.mkdir(base + path)
+    with open(base + path + '/' + name + '.json', 'w') as f:
+        json.dump(long_return, f, cls=NumpyEncoder)
+    return
+
+
+def write(writer, turn, step, var, name):
+    with writer.as_default():
+        tf.summary.scalar(name + str(turn), var, step=step)
+        tf.summary.flush()
+    return
+
+
+class Agent(object):
     def __init__(self, num_hidden_units: int, soc, pb_min, pb_max, pd_min, pd_max, pg_min, pg_max, battery_cost, costa,
-                 costb, costc):
-        self.actor = Actor(num_hidden_units)
-        self.critic = Critic(num_hidden_units)
-        self.long_term_return = LongTermReturn(num_hidden_units)
-        self.averaged_return = AveragedReturn(num_hidden_units)
+                 costb, costc, voltage_para, base):
 
+        self.actor = load_model(Actor(num_hidden_units))
+        self.critic_env = load_model(Critic(num_hidden_units), "_env")
+        self.critic_money = load_model(Critic(num_hidden_units), "_money")
+        self.averaged_return_env = load_model(AveragedReturn(num_hidden_units), "_env")
+        self.averaged_return_money = load_model(AveragedReturn(num_hidden_units), "_money")
+
+        self.avg_long_optimizer_env = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "avg_return_env")
+        self.avg_long_optimizer_money = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001),
+                                                       "avg_return_money")
+        self.actor_optimizer = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "actor")
+        self.critic_env_optimizer = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "critic_env")
+        self.critic_money_optimizer = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "critic_money")
+
+        # para
         self.state_t = None
         self.state_t_plus = None
-        self.value_t = None
-        self.value_t_plus = None
-        self.reward = None
-        self.long_term_estimate = None
-        self.avg_long_term_estimate = None
+        self.value_t = {"env": 0., "money": 0.}
+        self.value_t_plus = {"env": 0., "money": 0.}
+        self.reward = {"env": 0., "money": 0.}
+        self.long_term_estimate = {"env": 0., "money": 0.}
+        self.avg_long_term_estimate = {"env": 0., "money": 0.}
         self.action = None
         self.action_prob = None
-        self.action_goose = None
 
-        self.long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-        self.avg_long_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-        self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-        self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-
+        # special para
         self.soc = soc
         self.pb_min = pb_min
         self.pb_max = pb_max
@@ -107,104 +216,214 @@ class Agent:
         self.costa = costa
         self.costb = costb
         self.costc = costc
+        self.voltage_para = voltage_para
+        self.base = base
 
-        logging.basicConfig(filename=str(time.time()) + ".log", filemode="w",
+        logging.basicConfig(filename=str(time()) + ".log", filemode="w",
                             format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
                             datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
+
+    def alert(self, x):
+        try:
+            tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
+        except:
+            logging.error(self.state_t)
+            logging.error(self.state_t_plus)
+            logging.error(self.value_t)
+            logging.error(self.value_t_plus)
+            logging.error(self.long_term_estimate)
+            logging.error(self.avg_long_term_estimate)
+            logging.error(self.reward)
+            logging.error(self.action)
+            logging.error(self.action_prob)
+            logging.error(x)
+            raise
+
+    def log(self, step):
+        logging.info(("state_t", "step" + str(step), self.state_t))
+        logging.info(("state_t_plus", "step" + str(step), self.state_t_plus))
+        logging.info(("value_t", "step" + str(step), self.value_t))
+        logging.info(("value_t_plus", "step" + str(step), self.value_t_plus))
+        logging.info(("long_term_estimate", "step" + str(step), self.long_term_estimate))
+        logging.info(("avg_long_term_estimate", "step" + str(step), self.avg_long_term_estimate))
+        logging.info(("reward", "step" + str(step), self.reward))
+        logging.info(("action", "step" + str(step), self.action))
+        logging.info(("action_prob", "step" + str(step), self.action_prob))
+
+    def save(self):
+        save_model(self.actor)
+        save_model(self.critic_env, "_env", self.base)
+        save_model(self.critic_money, "_money", self.base)
+        save_model(self.averaged_return_env, "_env", self.base)
+        save_model(self.averaged_return_money, "_money", self.base)
+        save_optimizer(self.actor_optimizer, "actor", self.base)
+        save_optimizer(self.critic_env_optimizer, "critic_env", self.base)
+        save_optimizer(self.critic_money_optimizer, "critic_money", self.base)
+        save_optimizer(self.avg_long_optimizer_env, "avg_env", self.base)
+        save_optimizer(self.avg_long_optimizer_money, "avg_money", self.base)
+        # save_long_return(self.long_term_estimate["env"], "long_env")
+        # save_long_return(self.long_term_estimate["money"], "long_money")
 
     def communicate(self):
         pass
 
-    def get_action(self, state):
-        alert(state)
-        self.action_goose = self.actor(state)
-        self.action_prob = self.action_goose
-        alert(self.action_prob)
+    def get_action(self):
+        self.action_prob = self.actor(self.state_t)
+        self.alert(self.action_prob)
         self.action = (
-            tf.random.normal([1, 1], self.action_goose[0][0], self.action_goose[0][1]), tf.random.normal([1, 1], self.action_goose[1][0], self.action_goose[1][1]),
-            tf.random.normal([1, 1], self.action_goose[2][0], self.action_goose[2][1]))
-        return self.action
+            tf.random.normal([1], mean=self.action_prob[0][0], stddev=self.action_prob[0][1]),
+            tf.random.normal([1], mean=self.action_prob[1][0], stddev=self.action_prob[1][1]))
+        return
 
-    def long_term_func(self, reward: tf.Tensor):
+    def long_term_func(self):
+        self.long_term_estimate["env"] += 0.1 * (self.reward["env"] - self.long_term_estimate["env"])
+        self.long_term_estimate["money"] += 0.1 * (self.reward["money"] - self.long_term_estimate["money"])
+        return
+
+    def value(self):
         with tf.GradientTape() as tape:
-            alert(reward)
-            long_term_estimate = self.long_term_return(reward)
-            alert(long_term_estimate)
-            loss = tf.square(long_term_estimate - reward)
-            alert(loss)
-        grads = tape.gradient(loss, self.long_term_return.trainable_variables)
-        self.long_optimizer.apply_gradients(zip(grads, self.long_term_return.trainable_variables))
-        return long_term_estimate
-
-    def avg_long_term_func(self, reward: tf.Tensor):
+            self.value_t["env"] = self.critic_env(self.state_t)
+            self.value_t_plus["env"] = self.critic_env(self.state_t_plus)
+            self.alert(self.value_t_plus["env"])
+            td_error = tf.reduce_mean(
+                self.reward["env"] - self.long_term_estimate["env"] + self.value_t_plus["env"] - self.value_t[
+                    "env"])
+            loss = tf.square(td_error)
+        grads = tape.gradient(loss, self.critic_env.trainable_variables)
+        self.critic_env_optimizer.apply_gradients(zip(grads, self.critic_env.trainable_variables))
         with tf.GradientTape() as tape:
-            avg_long_term_estimate = self.averaged_return(reward)
-            alert(avg_long_term_estimate)
-            loss = reward - avg_long_term_estimate
-            alert(loss)
-        grads = tape.gradient(loss, self.averaged_return.trainable_variables)
-        self.avg_long_optimizer.apply_gradients(zip(grads, self.averaged_return.trainable_variables))
-        return avg_long_term_estimate
+            self.value_t["money"] = self.critic_money(self.state_t)
+            self.value_t_plus["money"] = self.critic_money(self.state_t_plus)
+            self.alert(self.value_t_plus["money"])
+            td_error = tf.reduce_mean(
+                self.reward["money"] - self.long_term_estimate["money"] + self.value_t_plus["money"] - \
+                self.value_t[
+                    "money"])
+            loss = tf.square(td_error)
+        grads = tape.gradient(loss, self.critic_money.trainable_variables)
+        self.critic_money_optimizer.apply_gradients(zip(grads, self.critic_money.trainable_variables))
+        return
 
-    def op_act(self, avg_long_term_return, long_term_return, state_t, state_t_plus, action_probs):
-        value_t = self.critic(state_t) if self.value_t_plus is None else self.value_t_plus
-        value_t_plus = self.critic(state_t_plus)
-        alert(value_t_plus)
-        td_error = avg_long_term_return - long_term_return + value_t_plus - value_t
-        loss = tf.math.reduce_sum([tf.math.reduce_sum(tfp.distributions.Normal(loc=action_probs[i][0], scale=action_probs[i][1] + 1e-9).log_prob(value=self.action[i]) * td_error) for i in range(3)])
-        alert(td_error)
-        alert(loss)
-        return loss, value_t, value_t_plus
+    def avg_long_term_func(self):
+        # ls = [float(x) for x in
+        #       [self.state_t[0][0], self.state_t[0][1], self.state_t[0][2], self.action[0][0], self.action[1][0]]]
+        # inputs = tf.reshape(tf.constant(ls), [1, 5])
+        with tf.GradientTape() as tape:
+            self.avg_long_term_estimate["env"] = self.averaged_return_env(self.state_t)
+            self.alert(self.avg_long_term_estimate["env"])
+            loss = - tf.reduce_mean(self.reward["env"] - self.avg_long_term_estimate["env"])
+            self.alert(loss)
+        grads = tape.gradient(loss, self.averaged_return_env.trainable_variables)
+        self.avg_long_optimizer_env.apply_gradients(zip(grads, self.averaged_return_env.trainable_variables))
+        with tf.GradientTape() as tape:
+            self.avg_long_term_estimate["money"] = self.averaged_return_money(self.state_t)
+            self.alert(self.avg_long_term_estimate["money"])
+            loss = - tf.reduce_mean(self.reward["money"] - self.avg_long_term_estimate["money"])
+            self.alert(loss)
+        grads = tape.gradient(loss, self.averaged_return_money.trainable_variables)
+        self.avg_long_optimizer_money.apply_gradients(zip(grads, self.averaged_return_money.trainable_variables))
+        return
 
-    @staticmethod
-    def op_critic(long_term_return, value_t, value_t_plus, reward):
-        td_error = reward - long_term_return + value_t_plus - value_t
-        alert(td_error)
-        loss = tf.square(td_error)
-
+    def op_act(self):
+        td_error_env = self.avg_long_term_estimate["env"] - self.long_term_estimate["env"] + self.value_t_plus["env"] - \
+                       self.value_t["env"]
+        td_error_money = self.avg_long_term_estimate["money"] - self.long_term_estimate["money"] + self.value_t_plus[
+            "money"] - self.value_t["money"]
+        td_error = td_error_money + td_error_env
+        dis = [tfp.distributions.Normal(loc=self.action_prob[i][0], scale=self.action_prob[i][1]) for i in range(2)]
+        self.alert(dis)
+        log_prob = tf.reduce_sum([dis[i].log_prob(value=self.action[i]) for i in range(2)])
+        self.alert(log_prob)
+        entropy = tf.reduce_sum([0.01 * i.entropy() for i in dis])
+        loss = tf.multiply(log_prob, td_error) + entropy
+        self.alert(loss)
         return loss
 
-    def multi_object(self, init_state, env: MicroGrid):
-        with tf.GradientTape() as tape_:
+    def multi_object(self, init_state, env, writer, turn):
+        all_reward = {"env": 0., "money": 0.}
+        for step in range(24):
             with tf.GradientTape() as tape:
-                next_state, reward, self.soc = env.step(self.get_action(init_state), self.soc, self.pb_max,
-                                                        self.battery_cost, self.costa,
-                                                        self.costb, self.costc)
                 self.state_t = init_state
-                self.state_t_plus = next_state
-                self.reward = reward
-                self.long_term_estimate = self.long_term_func(self.reward)
-                self.avg_long_term_estimate = self.avg_long_term_func(self.reward)
-                logging.debug(("avg long term estimate", self.avg_long_term_estimate))
-                logging.debug(("long term estimate", self.long_term_estimate))
-                logging.debug(("reward", self.reward))
-                logging.debug(("next state", self.state_t_plus))
-                loss, self.value_t, self.value_t_plus = self.op_act(self.avg_long_term_estimate,
-                                                                    self.long_term_estimate,
-                                                                    self.state_t, self.state_t_plus, self.action_prob,
-                                                                    )
-                alert(loss)
+                self.get_action()
+                self.state_t_plus, self.reward["money"], self.reward["env"], self.soc = env.step(self.action,
+                                                                                                 self.soc, self.pb_max,
+                                                                                                 self.battery_cost,
+                                                                                                 self.costa, self.costb,
+                                                                                                 self.costc,
+                                                                                                 self.voltage_para)
+                self.long_term_func()
+                self.avg_long_term_func()
+                self.value()
+                loss = self.op_act()
+                self.alert(loss)
             grads = tape.gradient(loss, self.actor.trainable_variables)
-            logging.debug(("actor loss", loss))
-            logging.debug(("actor grads", grads))
             self.actor_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
-            loss = self.op_critic(self.long_term_estimate, self.value_t, self.value_t_plus, reward)
-            alert(loss)
-        grads = tape_.gradient(loss, self.critic.trainable_variables)
-        self.critic_optimizer.apply_gradients(zip(grads, self.critic.trainable_variables))
-        logging.debug(("critic loss", loss))
-        logging.debug(("critic grads", grads))
-        alert(loss)
-        return next_state, reward
+            init_state = tf.reshape(self.state_t_plus, shape=(1, 3))
+            all_reward["env"] += self.reward["env"]
+            all_reward["money"] += self.reward["money"]
+            step += 1
+            self.log(step)
+            write(writer, turn, step, tf.squeeze(self.reward["env"]), "reward_env")
+            write(writer, turn, step, tf.squeeze(self.reward["money"]), "reward_money")
+        self.save()
+        return all_reward
+
+    # def multi_agent(self, init_state, env):
+    #     with tf.GradientTape() as tape:
+    #         self.state_t = init_state
+    #         self.get_action()
+    #         action = list(self.action)
+    #         if action[0] > self.pd_max:
+    #             action[0] += self.pd_max - action[0]
+    #         elif action[0] < self.pd_min:
+    #             action[0] += self.pd_min - action[0]
+    #         if action[1] > self.pg_max:
+    #             action[1] += self.pg_max - action[1]
+    #         elif action[1] < self.pg_min:
+    #             action[1] += self.pg_min - action[1]
+    #         # if action[2] > self.pb_max:
+    #         #     action[2] += self.pb_max - action[2]
+    #         # elif action[2] < self.pb_min:
+    #         #     action[2] += self.pb_min - action[2]
+    #         self.state_t_plus, self.reward["money"], self.reward["env"], self.soc = env.step(tuple(action),
+    #                                                                                          self.soc, self.pb_max,
+    #                                                                                          self.battery_cost,
+    #                                                                                          self.costa, self.costb,
+    #                                                                                          self.costc,
+    #                                                                                          self.voltage_para)
+    #         self.long_term_func()
+    #         self.avg_long_term_func()
+    #         self.value()
+    #         loss = self.op_act()
+    #         self.alert(loss)
+    #     grads = tape.gradient(loss, self.actor.trainable_variables)
+    #     self.actor_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
+        # write(writer, turn, step, tf.squeeze(self.reward), "reward")
 
 
-class DMOAC:
-    def __init__(self, num_actions, num_hidden_units, agent_list, ):
-        pass
-
-    def train(self):
-        pass
-
-
-if __name__ == "__main__":
-    pass
+# class DMOAC(object):
+#     def __init__(self, url: str):
+#         if os.path.exists(url):
+#             with open(url, "r") as f:
+#                 conf = json.load(f)
+#         num_hidden_units = conf["num_hidden_units"]
+#         self.agents = []
+#         for agent in conf["agents"]:
+#             self.agents.append(Agent(num_hidden_units, agent["soc"], agent["pb_min"], agent["pb_max"], agent["pd_min"],
+#                                      agent["pd_max"],
+#                                      agent["pg_min"], agent["pg_max"], agent["battery_cost"], agent["costa"],
+#                                      agent["costb"],
+#                                      agent["costc"], agent["voltage_para"]))
+#         self.agents = tuple(self.agents)
+#
+#     def train(self, init_state, env):
+#         pl = []
+#         for agent in self.agents:
+#             pl.append(Process(target=agent.multi_agent(init_state, env)))
+#             pl[-1].start()
+#         for process in pl:
+#             process.join()
+#
+#
+# if __name__ == "__main__":
+#     pass

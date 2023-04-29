@@ -1,12 +1,12 @@
 # coding=utf-8
 
 import logging
-import random
 import time
 
 import tensorflow as tf
 import tensorflow_probability as tfp
-import winsound
+
+import messaging
 
 
 class Actor(tf.keras.Model):
@@ -14,13 +14,17 @@ class Actor(tf.keras.Model):
         super().__init__()
         kernel_initializer = tf.keras.initializers.RandomUniform(minval=0., maxval=0.2)
         bias_initializer = tf.keras.initializers.Constant(0.1)
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
         self.normal1 = tf.keras.layers.LayerNormalization()
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
         self.normal2 = tf.keras.layers.LayerNormalization()
         # , activation = "tanh"
-        self.actor_pd_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
-        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.actor_pd_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                bias_initializer=bias_initializer)
+        self.actor_pd_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                  bias_initializer=bias_initializer)
         # self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
         # self.actor_pg_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
         # self.actor_pb_u = tf.keras.layers.Dense(1, kernel_initializer=initializer)
@@ -43,11 +47,14 @@ class Critic(tf.keras.Model):
         super().__init__()
         kernel_initializer = tf.keras.initializers.RandomNormal(mean=0., stddev=0.01)
         bias_initializer = tf.keras.initializers.Constant(0.1)
-        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.hidden1 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
         self.normal1 = tf.keras.layers.LayerNormalization()
-        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.hidden2 = tf.keras.layers.Dense(num_hidden_units, activation="tanh", kernel_initializer=kernel_initializer,
+                                             bias_initializer=bias_initializer)
         self.normal2 = tf.keras.layers.LayerNormalization()
-        self.critic = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.critic = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                            bias_initializer=bias_initializer)
 
     def call(self, inputs, training=None, mask=None):
         # inputs = tf.reshape(inputs, shape=(1, 1))
@@ -131,6 +138,8 @@ class Agent:
         self.costc = costc
         self.voltage_para = voltage_para
 
+        self.mes = messaging.Messaging()
+
         logging.basicConfig(filename=str(time.time()) + ".log", filemode="w",
                             format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
                             datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
@@ -139,10 +148,10 @@ class Agent:
         # Check if x contains any NaN values
         try:
             tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
-        except:
-            duration = 1000  # millisecond
-            freq = 440  # Hz
-            winsound.Beep(freq, duration)
+        except Exception as e:
+            self.mes.messaging(str(type(e)) + " " + str(e),
+                               {"state_t_plus": self.state_t, "value_t": self.value_t, "action": self.action,
+                                "action_prob": self.action_prob}, "")
             logging.error(self.state_t)
             logging.error(self.state_t_plus)
             logging.error(self.value_t)
@@ -151,7 +160,7 @@ class Agent:
             logging.error(self.action)
             logging.error(self.action_prob)
             logging.error(x)
-            tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
+            raise
 
     def communicate(self):
         pass

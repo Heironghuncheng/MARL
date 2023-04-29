@@ -1,5 +1,6 @@
 # coding=utf-8
 
+import os
 import tqdm
 import gymnasium as gym
 import tensorflow as tf
@@ -12,6 +13,8 @@ if __name__ == "__main__":
     # turn = 0
     writer = tf.summary.create_file_writer("./log")
     agent = Agent(128, 0, -500, 500, 0, 1000, 0, 1000, 0.0035, 0.00025, 0.0025, 8, 0.05)
+    with open("running.txt", "w") as f:
+        f.write(str(os.getpid()))
     env = MicroGrid(writer)
     env.define_observation_space('./envs/prize.csv', './envs/load.csv', './envs/pv.csv')
     with tqdm.trange(10000) as t:
@@ -25,4 +28,6 @@ if __name__ == "__main__":
                 tf.summary.scalar('all_reward', float(reward), step=i)
                 tf.summary.flush()
         writer.close()
+    with open("running.txt", "w") as f:
+        f.write("finished")
 

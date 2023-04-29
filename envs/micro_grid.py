@@ -151,8 +151,8 @@ class MicroGrid:
         # reward
         print("load", self.observation_space[1, self.__node[0], self.__node[1]])
         reward = (- eco_reward - env_reward) - limitations
-        # eco_reward = -eco_reward - limitations * 10
-        # env_reward = - env_reward - limitations * 10
+        eco_reward = -eco_reward - limitations * 10
+        env_reward = - env_reward - limitations * 10
         reward = reward / 30 + 0.25
         self.write(self.time_step, tf.squeeze(limitations), "limitations")
         self.time_step += 1

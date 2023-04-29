@@ -4,10 +4,10 @@ import json
 import logging
 import os
 import random
-from multiprocessing import Process
 from time import time
 from typing import Union
 
+import messaging
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -26,6 +26,8 @@ class NumpyEncoder(json.JSONEncoder):
             return float(obj)
         elif isinstance(obj, (np.ndarray,)):
             return obj.tolist()
+        elif isinstance(obj, (tf.Tensor,)):
+            return obj.numpy().tolist()
         return json.JSONEncoder.default(self, obj)
 
 
@@ -45,8 +47,10 @@ class Actor(tf.keras.Model):
                                                 bias_initializer=bias_initializer)
         self.actor_pd_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
                                                   bias_initializer=bias_initializer)
-        # self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
-        # self.actor_pg_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+        self.actor_pg_u = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                bias_initializer=bias_initializer)
+        self.actor_pg_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=kernel_initializer,
+                                                  bias_initializer=bias_initializer)
         # self.actor_pb_u = tf.keras.layers.Dense(1, kernel_initializer=initializer)
         # self.actor_pb_sig = tf.keras.layers.Dense(1, activation="tanh", kernel_initializer=initializer)
 
@@ -130,7 +134,7 @@ def load_model(model: Union[Critic, Actor, AveragedReturn], exname=None, base="m
         path = "model_" + str(type(model)).split("'")[1].split(".")[1] + exname
     if os.path.exists(base + path):
         if isinstance(model, AveragedReturn):
-            model(tf.expand_dims([0], 0))
+            model(tf.expand_dims([0, 0, 0], 0))
         else:
             model(tf.expand_dims([0, 0, 0], 0))
         model.load_weights(base + path + "/ckpt")
@@ -157,16 +161,36 @@ def load_optimizer(optimizer: tf.keras.optimizers.Adam, name: str, base="model")
     return optimizer
 
 
-def save_long_return(long_return, name: str, base="model"):
+def save_nums(nums: dict, base="model"):
     base = "./" + base + "/"
-    path = "long_return"
-    if os.path.exists(base + path):
+    path = "nums"
+    if os.path.exists(base):
         pass
     else:
-        os.mkdir(base + path)
-    with open(base + path + '/' + name + '.json', 'w') as f:
-        json.dump(long_return, f, cls=NumpyEncoder)
+        os.mkdir(base)
+    with open(base + path + '.json', 'w') as f:
+        json.dump(nums, f, cls=NumpyEncoder)
     return
+
+
+def load_nums(base="model"):
+    base = "./" + base + "/"
+    path = "nums"
+    if os.path.exists(base + path + ".json"):
+        with open(base + path + '.json', 'r') as f:
+            return dict(json.load(f))
+    else:
+        return {
+            "state_t": None,
+            "state_t_plus": None,
+            "value_t": {"env": 0., "money": 0.},
+            "value_t_plus": {"env": 0., "money": 0.},
+            "reward": {"env": 0., "money": 0.},
+            "long_term_estimate": {"env": 0., "money": 0.},
+            "avg_long_term_estimate": {"env": 0., "money": 0.},
+            "action": None,
+            "action_prob": None,
+        }
 
 
 def write(writer, turn, step, var, name):
@@ -193,16 +217,17 @@ class Agent(object):
         self.critic_env_optimizer = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "critic_env")
         self.critic_money_optimizer = load_optimizer(tf.keras.optimizers.Adam(learning_rate=0.00001), "critic_money")
 
+        para = load_nums()
         # para
-        self.state_t = None
-        self.state_t_plus = None
-        self.value_t = {"env": 0., "money": 0.}
-        self.value_t_plus = {"env": 0., "money": 0.}
-        self.reward = {"env": 0., "money": 0.}
-        self.long_term_estimate = {"env": 0., "money": 0.}
-        self.avg_long_term_estimate = {"env": 0., "money": 0.}
-        self.action = None
-        self.action_prob = None
+        self.state_t = para["state_t"]
+        self.state_t_plus = para["state_t_plus"]
+        self.value_t = para["value_t"]
+        self.value_t_plus = para["value_t_plus"]
+        self.reward = para["reward"]
+        self.long_term_estimate = para["long_term_estimate"]
+        self.avg_long_term_estimate = para["avg_long_term_estimate"]
+        self.action = para["action"]
+        self.action_prob = para["action_prob"]
 
         # special para
         self.soc = soc
@@ -219,36 +244,58 @@ class Agent(object):
         self.voltage_para = voltage_para
         self.base = base
 
-        logging.basicConfig(filename=str(time()) + ".log", filemode="w",
-                            format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
-                            datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
+        self.mes = messaging.Messaging(version="dev")
+        filename = str(time()) + ".log"
+        fh = logging.FileHandler(filename, mode='w+', encoding='utf-8')
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+        fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(fh)
+        self.logger.addHandler(ch)
+
+    def param_dict(self):
+        return {
+            "state_t": self.state_t,
+            "state_t_plus": self.state_t_plus,
+            "value_t": self.value_t,
+            "value_t_plus": self.value_t_plus,
+            "reward": self.reward,
+            "long_term_estimate": self.long_term_estimate,
+            "avg_long_term_estimate": self.avg_long_term_estimate,
+            "action": self.action,
+            "action_prob": self.action_prob,
+        }
 
     def alert(self, x):
         try:
-            tf.debugging.assert_all_finite(x, "Tensor contains NaN values")
-        except:
-            logging.error(self.state_t)
-            logging.error(self.state_t_plus)
-            logging.error(self.value_t)
-            logging.error(self.value_t_plus)
-            logging.error(self.long_term_estimate)
-            logging.error(self.avg_long_term_estimate)
-            logging.error(self.reward)
-            logging.error(self.action)
-            logging.error(self.action_prob)
-            logging.error(x)
+            tf.debugging.assert_all_finite(x, "NAN OR INF")
+        except Exception as e:
+            self.mes.messaging(str(type(e)) + " " + str(e), self.param_dict(), "NAN OR INF")
+            self.logger.error(("state_t", self.state_t))
+            self.logger.error(("state_t_plus", self.state_t_plus))
+            self.logger.error(("value_t", self.value_t))
+            self.logger.error(("value_t_plus", self.value_t_plus))
+            self.logger.error(("long_term_estimate", self.long_term_estimate))
+            self.logger.error(("avg_long_term_estimate", self.avg_long_term_estimate))
+            self.logger.error(("reward", self.reward))
+            self.logger.error(("action", self.action))
+            self.logger.error(("action_prob", self.action_prob))
+            self.logger.error(x)
             raise
 
     def log(self, step):
-        logging.info(("state_t", "step" + str(step), self.state_t))
-        logging.info(("state_t_plus", "step" + str(step), self.state_t_plus))
-        logging.info(("value_t", "step" + str(step), self.value_t))
-        logging.info(("value_t_plus", "step" + str(step), self.value_t_plus))
-        logging.info(("long_term_estimate", "step" + str(step), self.long_term_estimate))
-        logging.info(("avg_long_term_estimate", "step" + str(step), self.avg_long_term_estimate))
-        logging.info(("reward", "step" + str(step), self.reward))
-        logging.info(("action", "step" + str(step), self.action))
-        logging.info(("action_prob", "step" + str(step), self.action_prob))
+        self.logger.info(("state_t", "step" + str(step), self.state_t))
+        self.logger.info(("state_t_plus", "step" + str(step), self.state_t_plus))
+        self.logger.info(("value_t", "step" + str(step), self.value_t))
+        self.logger.info(("value_t_plus", "step" + str(step), self.value_t_plus))
+        self.logger.info(("long_term_estimate", "step" + str(step), self.long_term_estimate))
+        self.logger.info(("avg_long_term_estimate", "step" + str(step), self.avg_long_term_estimate))
+        self.logger.info(("reward", "step" + str(step), self.reward))
+        self.logger.info(("action", "step" + str(step), self.action))
+        self.logger.info(("action_prob", "step" + str(step), self.action_prob))
 
     def save(self):
         save_model(self.actor)
@@ -261,6 +308,7 @@ class Agent(object):
         save_optimizer(self.critic_money_optimizer, "critic_money", self.base)
         save_optimizer(self.avg_long_optimizer_env, "avg_env", self.base)
         save_optimizer(self.avg_long_optimizer_money, "avg_money", self.base)
+        save_nums(self.param_dict(), self.base)
         # save_long_return(self.long_term_estimate["env"], "long_env")
         # save_long_return(self.long_term_estimate["money"], "long_money")
 
@@ -331,7 +379,6 @@ class Agent(object):
             "money"] - self.value_t["money"]
         td_error = td_error_money + td_error_env
         dis = [tfp.distributions.Normal(loc=self.action_prob[i][0], scale=self.action_prob[i][1]) for i in range(2)]
-        self.alert(dis)
         log_prob = tf.reduce_sum([dis[i].log_prob(value=self.action[i]) for i in range(2)])
         self.alert(log_prob)
         entropy = tf.reduce_sum([0.01 * i.entropy() for i in dis])
@@ -363,8 +410,8 @@ class Agent(object):
             all_reward["money"] += self.reward["money"]
             step += 1
             self.log(step)
-            write(writer, turn, step, tf.squeeze(self.reward["env"]), "reward_env")
-            write(writer, turn, step, tf.squeeze(self.reward["money"]), "reward_money")
+            # write(writer, turn, step, tf.squeeze(self.reward["env"]), "reward_env")
+            # write(writer, turn, step, tf.squeeze(self.reward["money"]), "reward_money")
         self.save()
         return all_reward
 
@@ -398,8 +445,7 @@ class Agent(object):
     #         self.alert(loss)
     #     grads = tape.gradient(loss, self.actor.trainable_variables)
     #     self.actor_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
-        # write(writer, turn, step, tf.squeeze(self.reward), "reward")
-
+    # write(writer, turn, step, tf.squeeze(self.reward), "reward")
 
 # class DMOAC(object):
 #     def __init__(self, url: str):

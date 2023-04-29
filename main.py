@@ -13,6 +13,8 @@ if __name__ == "__main__":
         pass
     else:
         os.mkdir("model")
+    with open("running.txt", "w") as f:
+        f.write(str(os.getpid()))
     agent = Agent(32, 0, -500, 500, 0, 1000, 0, 1000, 0.0035, 0.00025, 0.0025, 8, 0.05, "model")
     env = MicroGrid(writer)
     env.define_observation_space('./envs/prize.csv', './envs/load.csv', './envs/pv.csv')
@@ -27,4 +29,6 @@ if __name__ == "__main__":
                 tf.summary.scalar('all_reward_money', float(reward["money"]), step=i)
                 tf.summary.flush()
         writer.close()
+    with open("running.txt", "w") as f:
+        f.write("finished")
 

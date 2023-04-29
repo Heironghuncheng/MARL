@@ -40,8 +40,8 @@ class MicroGrid:
 
         # limitations
         # balance between supply and demand
-        self.__more_balance_para = 88
-        self.__less_balance_para = 88
+        self.__more_balance_para = 1
+        self.__less_balance_para = 1
 
         # battery capacity and battery
         # self.__battery_cap = 100
@@ -90,11 +90,7 @@ class MicroGrid:
         # action: generate buy battery
 
         # voltage value
-        pd, pg= action
-        # , pb
-        v = pd * voltage_para + self.__slack
-
-        # vmax = 270
+        pd, pg = action
 
         # limitations
 
@@ -119,10 +115,10 @@ class MicroGrid:
         # battery max = 15000
 
         # voltage
-        voltage_punishment = self.__voltage_limit * (max(v - self.__high_voltage, 0) + max(self.__low_voltage - v, 0))
+        # voltage_punishment = self.__voltage_limit * (max(v - self.__high_voltage, 0) + max(self.__low_voltage - v, 0))
 
         # voltage max = 15000
-        limitations = sup_demand_punishment + voltage_punishment
+        limitations = sup_demand_punishment
 
         # limit max = 45000
 
@@ -145,7 +141,7 @@ class MicroGrid:
         # 10000
 
         # security objective
-        sec_reward = (v - self.__ref_voltage) ** 2
+        # sec_reward = (v - self.__ref_voltage) ** 2
         # 900
 
         # environmental objective
@@ -153,8 +149,11 @@ class MicroGrid:
         # 3200
 
         # reward
-        reward = (- eco_reward - sec_reward - env_reward) - limitations * 10
-
+        print("load", self.observation_space[1, self.__node[0], self.__node[1]])
+        reward = (- eco_reward - env_reward) - limitations
+        # eco_reward = -eco_reward - limitations * 10
+        # env_reward = - env_reward - limitations * 10
+        reward = reward / 30 + 0.25
         self.write(self.time_step, tf.squeeze(limitations), "limitations")
         self.time_step += 1
 
@@ -166,12 +165,15 @@ class MicroGrid:
         # print(limitations)
 
         state = tf.expand_dims(state, 0)
+        eco_reward = tf.expand_dims(eco_reward, 0)
+        env_reward = tf.expand_dims(env_reward, 0)
         reward = tf.expand_dims(reward, 0)
+        # print(env_reward, eco_reward)
 
         # point to the next column or step or data
         self.__node[1] += 1
 
-        return state, reward, soc
+        return state, eco_reward, env_reward, soc
 
     def turn(self):
         # next turn is beginning and the step reset to 0
@@ -184,21 +186,37 @@ class MicroGrid:
         # first turn is beginning turn and step are reset to 0
         if num > 1369:
             num = 1369
-        self.__node = [1369, 0]
+        self.__node = [num, 0]
         # refresh state
         state = (
             self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0],)
 
         return state
 
-    def define_observation_space(self, prize_url="prize.csv", pv_url="pv.csv", load_url="load.csv"):
+    @staticmethod
+    def normal(x: np.ndarray, y=None):
+        if y is None:
+            ma = np.max(x)
+            mi = np.min(x)
+            print(float(ma-mi))
+            return np.array(list(map(lambda z: (z-mi)/(ma-mi), x))), float(ma-mi)
+        else:
+            return np.array(list(map(lambda z: z / y, x)))
+
+    def define_observation_space(self, prize_url="prize.csv", load_url="load.csv", pv_url="pv.csv"):
         # load the load, prize and pv data
-        prize_data = np.array(read_csv(prize_url, header=None))
-        load_data = np.array(read_csv(load_url, header=None))
-        pv_data = np.array(read_csv(pv_url, header=None))
+        prize_data, _ = self.normal(np.array(read_csv(prize_url, header=None)))
+        load_data, length = self.normal(np.array(read_csv(load_url, header=None)))
+        pv_data = self.normal(np.array(read_csv(pv_url, header=None)), length)
 
         # create a three three-dimensional array
         self.observation_space = np.array([prize_data, load_data, pv_data], dtype=np.float32)
         self.rows = prize_data.shape[0]
         self.columns = prize_data.shape[1]
         return self.rows, self.columns
+
+
+if __name__ == "__main__":
+    writer = tf.summary.create_file_writer("./log")
+    env = MicroGrid(writer)
+    env.step((0, 0), 0, 0, 0, 0.00025, 0.0025, 8, 0.05)

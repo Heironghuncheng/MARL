@@ -1,9 +1,5 @@
 # coding=utf-8
-
-import numpy as np
-from pandas import read_csv
 import tensorflow as tf
-
 
 class SecFunc:
     def __init__(self):
@@ -14,6 +10,10 @@ class SecFunc:
 
     def step(self, action):
         end = False
+        if action > 1:
+            action += 1 - action
+        if action < -1:
+            action += -1 - action
         next_state = self.state + action
         if abs(next_state - 0.5) < 0.01:
             end = True

@@ -13,6 +13,8 @@ if __name__ == "__main__":
             if pid == "finished":
                 mes.messaging("finished", {}, "have a nice table")
                 break
+            elif pid == "NAN OR INF":
+                break
             else:
                 running_pid = psutil.pids()
                 if int(pid) in running_pid:

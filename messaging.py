@@ -2,7 +2,18 @@
 
 from httpx import post
 import time
-import json
+from tensorflow import Tensor
+
+
+def default(obj) -> str:
+    if isinstance(obj, (dict,)):
+        return "".join([str(items[0]) + ": " + default(items[1]) for items in obj.items()])
+    elif isinstance(obj, (tuple,)):
+        return "".join([default(items) for items in obj])
+    elif isinstance(obj, (Tensor,)):
+        return str(obj.numpy().tolist()) + "\n"
+    else:
+        return str(obj) + "\n"
 
 
 class Messaging(object):
@@ -18,11 +29,12 @@ class Messaging(object):
         return code
 
     def messaging(self, mes_type: str, spot: dict, remark: str):
-        msg = {"version": self.version, "time": str(time.ctime(time.time())), "type": mes_type, "spot": spot,
-               "remark": remark}
+        msg = {"VERSION": self.version, "TIME": str(time.ctime(time.time())), "TYPE": mes_type, "SPOT": spot,
+               "REMARK": remark}
+        msg = default(msg)
         data = {
             'auth': self.auth(),
-            'msg': json.dumps(msg),
+            'msg': msg,
             'id': 2978103904,
             'type': 'private'
         }
@@ -30,6 +42,6 @@ class Messaging(object):
         print(res)
 
 
-
-
-
+if __name__ == "__main__":
+    mes = Messaging()
+    mes.messaging("test", {"a": "b", "c": "d", "e": {"f": "g"}}, "none")

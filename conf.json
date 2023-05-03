@@ -1,5 +1,5 @@
 {
-  "num_hidden_units": 32,
+  "num_hidden_units": 128,
   "agents": [
     {
       "soc": 0,

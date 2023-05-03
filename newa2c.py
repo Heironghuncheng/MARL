@@ -408,6 +408,11 @@ class MulAgent(Agent):
         super().__init__(num_hidden_units, soc, pb_min, pb_max, pd_min, pd_max, pg_min, pg_max, battery_cost, costa,
                          costb, costc, voltage_para, base)
         self.__step = 0
+        self.comm_map = ((0.41667, 0, 0.33333, 0.25, 0),
+                         (0, 0.41667, 0.33333, 0.25, 0),
+                         (0.33333, 0.33333, 0.33334, 0, 0),
+                         (0.25, 0.25, 0, 0.25, 0.25),
+                         (0, 0, 0, 0.25, 0.75))
 
     def next_step(self):
         self.__step += 1
@@ -422,8 +427,11 @@ class MulAgent(Agent):
             "step": self.__step,
         }
 
-    def communicate_cal(self, data):
-        pass
+    def communicate_cal(self, data: tuple[list, list, list, list], rank):
+        self.critic_env.set_weights(sum([self.comm_map[rank][i] * data[0][i] for i in range(5)]))
+        self.critic_money.set_weights(sum([self.comm_map[rank][i] * data[1][i] for i in range(5)]))
+        self.averaged_return_env.set_weights(sum([self.comm_map[rank][i] * data[2][i] for i in range(5)]))
+        self.averaged_return_money.set_weights(sum([self.comm_map[rank][i] * data[3][i] for i in range(5)]))
 
     def communicate_give(self):
         base = self.base + "/"
@@ -444,7 +452,7 @@ class MulAgent(Agent):
                 return True
         return False
 
-    def multi_agent(self, init_state, env, urls: list[str]):
+    def multi_agent(self, init_state, env):
         with tf.GradientTape() as tape:
             self.state_t = init_state
             self.get_action()
@@ -454,12 +462,6 @@ class MulAgent(Agent):
                                                                                              self.costa, self.costb,
                                                                                              self.costc,
                                                                                              self.voltage_para)
-            self.communicate_give()
-            for i in urls:
-                while True:
-                    if self.communicate_receive(i):
-                        break
-
             self.long_term_func()
             self.avg_long_term_func()
             self.value()
@@ -467,3 +469,5 @@ class MulAgent(Agent):
             self.alert(loss)
         grads = tape.gradient(loss, self.actor.trainable_variables)
         self.actor_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
+        return self.reward
+

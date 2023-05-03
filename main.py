@@ -40,6 +40,10 @@ def single_agent():
 
 
 def multi_agents():
+    # gpus = tf.config.experimental.list_physical_devices("GPU")
+    # tf.config.experimental.set_memory_growth(gpus[0], True)
+    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(
+    #     memory_limit=2048)])
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     with open("conf.json", "r") as f:
@@ -55,7 +59,7 @@ def multi_agents():
                          agents["agents"][rank]["pg_max"], agents["agents"][rank]["battery_cost"],
                          agents["agents"][rank]["costa"],
                          agents["agents"][rank]["costb"], agents["agents"][rank]["costc"],
-                         agents["agents"][rank]["voltage_para"], all_base + "agent_" + str(rank + 1))
+                         agents["agents"][rank]["voltage_para"], all_base + "agent_" + str(rank + 1), rank)
         env.define_observation_space('./envs/prize.csv', './envs/load.csv', './envs/pv.csv')
         print(f"rank {rank} created ")
     else:
@@ -72,11 +76,11 @@ def multi_agents():
                 reward["env"] += float(res["env"])
                 reward["money"] += float(res["money"])
                 for z in range(5):
-                    comm_ls[0].append(comm.Bcast(agent.critic_env.trainable_variables, root=z))
-                    comm_ls[1].append(comm.Bcast(agent.critic_money.trainable_variables, root=z))
-                    comm_ls[2].append(comm.Bcast(agent.averaged_return_env.trainable_variables, root=z))
-                    comm_ls[3].append(comm.Bcast(agent.averaged_return_money.trainable_variables, root=z))
-                agent.communicate_cal(comm_ls, rank)
+                    comm_ls[0].append(comm.bcast(agent.critic_env.trainable_weights, root=z))
+                    comm_ls[1].append(comm.bcast(agent.critic_money.trainable_weights, root=z))
+                    comm_ls[2].append(comm.bcast(agent.averaged_return_env.trainable_weights, root=z))
+                    comm_ls[3].append(comm.bcast(agent.averaged_return_money.trainable_weights, root=z))
+                agent.communicate_cal(comm_ls)
                 for z in comm_ls:
                     z.clear()
                 first_state = tf.reshape(agent.state_t_plus, shape=(1, 3))

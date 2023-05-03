@@ -404,53 +404,29 @@ class Agent(object):
 
 class MulAgent(Agent):
     def __init__(self, num_hidden_units: int, soc, pb_min, pb_max, pd_min, pd_max, pg_min, pg_max, battery_cost, costa,
-                 costb, costc, voltage_para, base):
+                 costb, costc, voltage_para, base, rank):
         super().__init__(num_hidden_units, soc, pb_min, pb_max, pd_min, pd_max, pg_min, pg_max, battery_cost, costa,
                          costb, costc, voltage_para, base)
-        self.__step = 0
         self.comm_map = ((0.41667, 0, 0.33333, 0.25, 0),
                          (0, 0.41667, 0.33333, 0.25, 0),
                          (0.33333, 0.33333, 0.33334, 0, 0),
                          (0.25, 0.25, 0, 0.25, 0.25),
                          (0, 0, 0, 0.25, 0.75))
+        self.rank = rank
 
-    def next_step(self):
-        self.__step += 1
+    def calc_sum(self, var: list[tf.Tensor]):
+        multi_result = []
+        for i in range(len(var)):
+            multi_result.append([])
+            for j in var[i]:
+                multi_result[i].append(tf.multiply(j, self.comm_map[self.rank][i]))
+        return list(map(lambda x, y: x+y, multi_result[0], multi_result[1]))
 
-    def param_dict(self) -> dict:
-        return {
-            "value_t": self.value_t,
-            "value_t_plus": self.value_t_plus,
-            "reward": self.reward,
-            "long_term_estimate": self.long_term_estimate,
-            "avg_long_term_estimate": self.avg_long_term_estimate,
-            "step": self.__step,
-        }
-
-    def communicate_cal(self, data: tuple[list, list, list, list], rank):
-        self.critic_env.set_weights(sum([self.comm_map[rank][i] * data[0][i] for i in range(5)]))
-        self.critic_money.set_weights(sum([self.comm_map[rank][i] * data[1][i] for i in range(5)]))
-        self.averaged_return_env.set_weights(sum([self.comm_map[rank][i] * data[2][i] for i in range(5)]))
-        self.averaged_return_money.set_weights(sum([self.comm_map[rank][i] * data[3][i] for i in range(5)]))
-
-    def communicate_give(self):
-        base = self.base + "/"
-        if os.path.exists(base):
-            pass
-        else:
-            os.mkdir(base)
-        with open(base + "data.json", "w") as f:
-            json.dump(self.param_dict(), f, cls=NumpyEncoder)
-
-    def communicate_receive(self, url: str):
-        url += "/"
-        if os.path.exists(url):
-            with open(url + "data.json", "r") as f:
-                data = dict(json.load(f))
-            if data["step"] == self.__step:
-                self.communicate_cal(data)
-                return True
-        return False
+    def communicate_cal(self, data: tuple[list, list, list, list]):
+        self.critic_env.set_weights(self.calc_sum(data[0]))
+        self.critic_money.set_weights(self.calc_sum(data[1]))
+        self.averaged_return_env.set_weights(self.calc_sum(data[2]))
+        self.averaged_return_money.set_weights(self.calc_sum(data[3]))
 
     def multi_agent(self, init_state, env):
         with tf.GradientTape() as tape:
@@ -469,5 +445,5 @@ class MulAgent(Agent):
             self.alert(loss)
         grads = tape.gradient(loss, self.actor.trainable_variables)
         self.actor_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
+        self.save()
         return self.reward
-

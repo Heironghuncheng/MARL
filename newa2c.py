@@ -103,7 +103,7 @@ def write(writer, turn, step, var, name):
 
 class Agent:
     def __init__(self, num_hidden_units: int, soc, pb_min, pb_max, pd_min, pd_max, pg_min, pg_max, battery_cost, costa,
-                 costb, costc, voltage_para):
+                 costb, costc):
         self.actor = Actor(num_hidden_units)
         self.critic = Critic(num_hidden_units)
         # self.long_term_return = LongTermReturn(num_hidden_units)
@@ -136,7 +136,6 @@ class Agent:
         self.costa = costa
         self.costb = costb
         self.costc = costc
-        self.voltage_para = voltage_para
 
         self.mes = messaging.Messaging()
 
@@ -267,7 +266,7 @@ class Agent:
                     #     action[2] += self.pb_min - action[2]
                     # write(writer, turn, step, tf.squeeze(action), "action")
                     next_state, reward, self.soc = env.step(tuple(action), self.soc, self.pb_max, self.battery_cost,
-                                                            self.costa, self.costb, self.costc, self.voltage_para)
+                                                            self.costa, self.costb, self.costc)
                     logging.info(reward)
                     logging.info(self.value_t_plus)
                     logging.info(self.action)

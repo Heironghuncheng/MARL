@@ -182,14 +182,16 @@ class MicroGrid:
 
         return self.__node[0]
 
-    def reset(self, num):
+    def reset(self, num: int = -1):
         # first turn is beginning turn and step are reset to 0
-        if num > 1369:
-            num = 1369
-        self.__node = [num, 0]
+        self.__node[0] += 1
+        if num >= 0:
+            self.__node[0] = num
+        if self.__node[0] > 1369:
+            self.__node[0] = 0
         # refresh state
         state = (
-            self.observation_space[0, 0, 0], self.observation_space[1, 0, 0], self.observation_space[2, 0, 0],)
+            self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], self.observation_space[2, self.__node[0], 0],)
 
         return state
 
@@ -203,11 +205,16 @@ class MicroGrid:
         else:
             return np.array(list(map(lambda z: z / y, x)))
 
-    def define_observation_space(self, prize_url="prize.csv", load_url="load.csv", pv_url="pv.csv"):
-        # load the load, prize and pv data
-        prize_data, _ = self.normal(np.array(read_csv(prize_url, header=None)))
-        load_data, length = self.normal(np.array(read_csv(load_url, header=None)))
-        pv_data = self.normal(np.array(read_csv(pv_url, header=None)), length)
+    def define_observation_space(self, prize_url="prize.csv", load_url="load.csv", pv_url="pv.csv", mode: str = "single"):
+        if mode == "single":
+            # load the load, prize and pv data
+            prize_data, _ = self.normal(np.array(read_csv(prize_url, header=None)))
+            load_data, length = self.normal(np.array(read_csv(load_url, header=None)))
+            pv_data = self.normal(np.array(read_csv(pv_url, header=None)), length)
+        else:
+            prize_data = np.array(read_csv(prize_url, header=None))
+            load_data = np.array(read_csv(load_url, header=None))
+            pv_data = np.array(read_csv(pv_url, header=None))
 
         # create a three three-dimensional array
         self.observation_space = np.array([prize_data, load_data, pv_data], dtype=np.float32)

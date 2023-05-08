@@ -83,7 +83,7 @@ class MicroGrid:
 
         # battery max = 15000
 
-        limitations = sup_demand_punishment
+        limitations = 10*sup_demand_punishment #0505   1->10
 
         # limit max = 45000
 
@@ -111,10 +111,11 @@ class MicroGrid:
 
         # reward
         print("load", self.observation_space[1, self.__node[0], self.__node[1]])
-        reward = (- eco_reward - env_reward) - limitations
+        reward = (- eco_reward - env_reward) - 0.9*limitations
+        print(limitations/sum(eco_reward,env_reward))
         # eco_reward = -eco_reward - limitations * 10
         # env_reward = - env_reward - limitations * 10
-        reward = reward / 30 + 0.25
+        reward = reward / 40 + 0.25     
         self.write(self.time_step, tf.squeeze(limitations), "limitations")
         self.time_step += 1
 
@@ -132,7 +133,7 @@ class MicroGrid:
         # print(env_reward, eco_reward)
 
         # point to the next column or step or data
-
+        self.__node[1] += 1
         return state, reward, soc
 
     def reset(self, num: int = -1):
@@ -142,7 +143,7 @@ class MicroGrid:
         if num >= 0:
             self.__node = [num, 0]
         else:
-            self.__node[0] = 0
+            self.__node = [0, 0]
         # refresh state
         state = (
             self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], self.observation_space[2, self.__node[0], 0],)

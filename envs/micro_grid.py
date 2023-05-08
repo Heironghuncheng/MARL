@@ -59,6 +59,7 @@ class MicroGrid:
         self.__voltage_limit = 500
         self.writer = writer
         self.time_step = 1
+        self.pv = True
 
         # target
         # Economic consumption function
@@ -95,8 +96,11 @@ class MicroGrid:
         # limitations
 
         # balance between supply and demand
-        sup_demand_function = -(self.observation_space[1, self.__node[0], self.__node[1]] - self.observation_space[
-            2, self.__node[0], self.__node[1]] - pd - pg)
+        if self.pv:
+            sup_demand_function = -(self.observation_space[1, self.__node[0], self.__node[1]] - self.observation_space[
+                2, self.__node[0], self.__node[1]] - pd - pg)
+        else:
+            sup_demand_function = -(self.observation_space[1, self.__node[0], self.__node[1]] - pd - pg)
         if sup_demand_function > 0:
             sup_demand_punishment = self.__more_balance_para * sup_demand_function
         else:
@@ -114,10 +118,6 @@ class MicroGrid:
 
         # battery max = 15000
 
-        # voltage
-        # voltage_punishment = self.__voltage_limit * (max(v - self.__high_voltage, 0) + max(self.__low_voltage - v, 0))
-
-        # voltage max = 15000
         limitations = sup_demand_punishment
 
         # limit max = 45000
@@ -139,10 +139,6 @@ class MicroGrid:
 
         eco_reward = generate_costs + buy
         # 10000
-
-        # security objective
-        # sec_reward = (v - self.__ref_voltage) ** 2
-        # 900
 
         # environmental objective
         env_reward = pd * self.__env_param + pg * self.__env_param
@@ -167,7 +163,7 @@ class MicroGrid:
         state = tf.expand_dims(state, 0)
         eco_reward = tf.expand_dims(eco_reward, 0)
         env_reward = tf.expand_dims(env_reward, 0)
-        reward = tf.expand_dims(reward, 0)
+        # reward = tf.expand_dims(reward, 0)
         # print(env_reward, eco_reward)
 
         # point to the next column or step or data
@@ -175,47 +171,31 @@ class MicroGrid:
 
         return state, eco_reward, env_reward, soc
 
-    def turn(self):
-        # next turn is beginning and the step reset to 0
-        self.__node[0] += 1
-        self.__node[1] = 0
-
-        return self.__node[0]
-
     def reset(self, num: int = -1):
         # first turn is beginning turn and step are reset to 0
-        self.__node[0] += 1
+        if num > 1369:
+            num = 1369
         if num >= 0:
-            self.__node[0] = num
-        if self.__node[0] > 1369:
-            self.__node[0] = 0
+            self.__node = [num, 0]
+        else:
+            self.__node = [self.__node[0] + 1, 0]
         # refresh state
-        state = (
-            self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], self.observation_space[2, self.__node[0], 0],)
-
+        if self.pv:
+            state = (
+                self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], 0,)
+        else:
+            state = (
+                self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], self.observation_space[2, self.__node[0], 0],)
         return state
 
-    @staticmethod
-    def normal(x: np.ndarray, y=None):
-        if y is None:
-            ma = np.max(x)
-            mi = np.min(x)
-            print(float(ma-mi))
-            return np.array(list(map(lambda z: (z-mi)/(ma-mi), x))), float(ma-mi)
-        else:
-            return np.array(list(map(lambda z: z / y, x)))
-
-    def define_observation_space(self, prize_url="prize.csv", load_url="load.csv", pv_url="pv.csv", mode: str = "single"):
-        if mode == "single":
-            # load the load, prize and pv data
-            prize_data, _ = self.normal(np.array(read_csv(prize_url, header=None)))
-            load_data, length = self.normal(np.array(read_csv(load_url, header=None)))
-            pv_data = self.normal(np.array(read_csv(pv_url, header=None)), length)
-        else:
-            prize_data = np.array(read_csv(prize_url, header=None))
-            load_data = np.array(read_csv(load_url, header=None))
+    def define_observation_space(self, prize_url="prize.csv", load_url="load.csv", pv_url="pv.csv"):
+        prize_data = np.array(read_csv(prize_url, header=None))
+        load_data = np.array(read_csv(load_url, header=None))
+        try:
             pv_data = np.array(read_csv(pv_url, header=None))
-
+        except:
+            self.pv = False
+            pv_data = None
         # create a three three-dimensional array
         self.observation_space = np.array([prize_data, load_data, pv_data], dtype=np.float32)
         self.rows = prize_data.shape[0]

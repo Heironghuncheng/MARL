@@ -40,10 +40,11 @@ def single_agent():
 
 
 def multi_agents():
-    # gpus = tf.config.experimental.list_physical_devices("GPU")
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    assert gpus is not None
     # tf.config.experimental.set_memory_growth(gpus[0], True)
-    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(
-    #     memory_limit=2048)])
+    tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(
+        memory_limit=9216)])
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     with open("conf.json", "r") as f:
@@ -60,11 +61,11 @@ def multi_agents():
                          agents["agents"][rank]["costa"],
                          agents["agents"][rank]["costb"], agents["agents"][rank]["costc"],
                          agents["agents"][rank]["voltage_para"], all_base + "agent_" + str(rank + 1), rank)
-        env.define_observation_space('./envs/prize.csv', './envs/load.csv', './envs/pv.csv')
+        env.define_observation_space('./envs/data/prize.csv', './envs/data/load.csv', './envs/data/pv' + str(rank) + '.csv')
         print(f"rank {rank} created ")
     else:
         print("OUT OF RANK")
-        assert False
+        assert "OUT OF RANK"
     comm_ls = ([], [], [], [])
     with tqdm.trange(30000) as t:
         for i in t:

@@ -420,7 +420,7 @@ class MulAgent(Agent):
             multi_result.append([])
             for j in var[i]:
                 multi_result[i].append(tf.multiply(j, self.comm_map[self.rank][i]))
-        return list(map(lambda x, y: x+y, multi_result[0], multi_result[1]))
+        return list(map(lambda x, y, z, n: x+y+z+n, multi_result[0], multi_result[1], multi_result[2], multi_result[3]))
 
     def communicate_cal(self, data: tuple[list, list, list, list]):
         self.critic_env.set_weights(self.calc_sum(data[0]))

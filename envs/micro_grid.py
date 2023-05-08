@@ -138,12 +138,10 @@ class MicroGrid:
 
     def reset(self, num: int = -1):
         # first turn is beginning turn and step are reset to 0
-        if num > 1369:
-            num = 1369
         if num >= 0:
-            self.__node = [num, 0]
+            self.__node = [num if num <= 1369 else 1369, 0]
         else:
-            self.__node = [0, 0]
+            self.__node = [self.__node[0] + 1 if self.__node[0] <= 1369 else 0, 0]
         # refresh state
         state = (
             self.observation_space[0, self.__node[0], 0], self.observation_space[1, self.__node[0], 0], self.observation_space[2, self.__node[0], 0],)
